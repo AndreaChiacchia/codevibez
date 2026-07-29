@@ -1,0 +1,11 @@
+{
+  "name": "codevibez",
+  "owner": { "name": "leonhong18", "url": "https://github.com/leonhong18" },
+  "plugins": [
+    {
+      "name": "codevibez",
+      "source": "./",
+      "description": "Plain-English live narration of everything your coding agent does."
+    }
+  ]
+}

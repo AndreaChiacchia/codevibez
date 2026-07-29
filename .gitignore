@@ -1,0 +1,20 @@
+/dist/
+node_modules/
+*.tsbuildinfo
+.DS_Store
+.vite-cache/
+README.draft.md
+
+# --- Published tree is deliberately minimal ---
+# Only what Claude Code needs to install and run this plugin is committed on
+# main: the manifests, the hook registrations, and the compiled bundles that
+# actually execute. The TypeScript source, tests and build tooling live on the
+# development branch and in the git tag, so the published repo stays readable
+# at a glance.
+src/
+tests/
+scripts/
+package.json
+package-lock.json
+tsconfig.json
+vitest.config.ts

@@ -1,0 +1,8 @@
+{
+  "name": "codevibez",
+  "displayName": "codevibez",
+  "version": "0.1.0",
+  "description": "Plain-English live narration of everything your coding agent does.",
+  "author": { "name": "leonhong18", "url": "https://github.com/leonhong18" },
+  "license": "MIT"
+}
