@@ -18,11 +18,11 @@ const VIEW = { plugin: 'codevibez', key: 'view' } as const
 const MEMO_LIMIT = 500
 
 const ENGLISH_ON =
-  "codevibez: English view is on. Type /codevibez to see Claude Code's own rows."
+  "English view is on. Type /codevibez to see Claude Code's own rows."
 const RAW_ON =
-  'codevibez: Raw view is on, showing exactly what ran in Claude Code\'s own rows. Type /codevibez to go back to English.'
+  'Raw view is on, showing exactly what ran in Claude Code\'s own rows. Type /codevibez to go back to English.'
 const USAGE =
-  'codevibez: use /codevibez to switch views, or /codevibez english or /codevibez raw.'
+  'Use /codevibez to switch views, or /codevibez english or /codevibez raw.'
 
 type Look = { color?: string; bold?: boolean; dimColor?: boolean }
 
@@ -137,7 +137,7 @@ export const register: Register = on => {
     if (wanted === null) return { text: USAGE }
     if (wanted !== now) await $.state.set(VIEW, wanted)
     return { text: wanted === 'raw' ? RAW_ON : ENGLISH_ON }
-  }).catch(() => ({ text: 'codevibez could not switch views; nothing changed.' }))
+  }).catch(() => ({ text: 'Could not switch views; nothing changed.' }))
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     let tree: RenderElement | undefined
@@ -194,7 +194,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('tool.call', async ($, e, next) => {
+  on('tool.call', async (_$, e, next) => {
     const ran = await next(e)
     try {
       const { tool, tool_use_id: _id, agentId: _agent, ...input } = e as Record<string, unknown>
@@ -215,14 +215,13 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const ran = await next(e)
     if (e.agentId !== undefined) return ran
-    let line: string | null = null
     try {
-      if ((await currentView($)) === 'english') line = summarize(ledger)
+      const line = (await currentView($)) === 'english' ? summarize(ledger) : null
+      if (line !== null) $.ui.log(line)
     } catch {
-      line = null
+      // No summary line is better than a turn that cannot end.
     }
     ledger = createLedger()
-    if (line !== null) $.ui.log(line)
     return ran
   })
 }

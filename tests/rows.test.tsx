@@ -66,6 +66,25 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
+  test('the exit code is kept however Claude Code words the error', async ($, on) => {
+    engineRows(on)
+    const outputs = [
+      'Error: Exit code 1\nls: /no-such-folder-here: No such file or directory',
+      '<tool_use_error>Exit code 1\nls: /no-such-folder-here: No such file or directory</tool_use_error>',
+      'ls: /no-such-folder-here: No such file or directory\nExit code 1',
+    ]
+    for (const surface of SURFACES) {
+      for (const output of outputs) {
+        const props = row('Bash', bash('ls /no-such-folder-here'), { isErrored: true, output })
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+        expect((await ui.find({ type: 'Text', text: /✗/ }))?.text).toBe(
+          '✗ Something needed for that step could not be found (exit code 1)',
+        )
+        await ui.unmount()
+      }
+    }
+  })
+
   test('a deletion names its target in full, in the warning color', async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {

@@ -306,9 +306,11 @@ const FAILED_STEP: Readonly<Record<string, string>> = {
 };
 
 function bashFailure(command: string, error: string): Sentence {
-  const exit = /^\s*Exit code (\d+)\s*\n?/.exec(error);
+  // Claude Code reports a non-zero exit as its own line, `Exit code 1`,
+  // sometimes led by `Error:` or wrapped in a tag, ahead of the output.
+  const exit = /(?:^|\n)[^\S\n]*(?:<[^>\n]+>)?[^\S\n]*(?:Error:[^\S\n]*)?Exit code (\d+)[^\S\n]*(?:\n|$)/.exec(error);
   const exitCode = exit === null ? undefined : Number(exit[1]);
-  const output = exit === null ? error : error.slice(exit[0].length);
+  const output = exit === null ? error : error.replace(exit[0], '\n');
   const event: CodevibezEvent = {
     v: 1,
     ts: '',
