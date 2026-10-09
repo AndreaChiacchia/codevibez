@@ -40,6 +40,7 @@ const READ_COMMANDS = new Set([
   'stat',
 ]);
 const PYTHONS = new Set(['python', 'python3']);
+const NAVIGATION = new Set(['cd', 'pushd', 'popd', 'export', 'set']);
 const TEST_BINS = new Set([
   'vitest',
   'jest',
@@ -572,7 +573,13 @@ export function translateBash(
   const danger = dangerLine(command, level, hint);
   if (danger !== null) return danger;
 
-  const segments = splitSegments(command);
+  // Moving to a folder or setting a variable is not a step anyone asked for:
+  // `cd app && npm test` is a test run, not "+1 more step".
+  const all = splitSegments(command);
+  const steps = all.filter(
+    (segment) => !NAVIGATION.has(tokenize(segment)[0] ?? ''),
+  );
+  const segments = steps.length > 0 ? steps : all;
   const classified = segments.map((segment) =>
     classifySegment(segment, level),
   );

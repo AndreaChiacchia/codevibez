@@ -21,9 +21,10 @@ Changes made while vendoring:
   `deno test`, and `python -m unittest` or `pytest`, with Node's and
   unittest's summary lines read for exact counts. Their tests are in
   `tests/runners-extra.test.ts`.
-- Two wordings were fixed after an end-to-end test: a chain of commands is
+- Three wordings were fixed after an end-to-end test: a chain of commands is
   named by its first meaningful step rather than filler such as `sleep` or
-  `git add`, and a shell overwrite no longer claims the file had contents
+  `git add`, moving to a folder (`cd`) or setting a variable is not counted
+  as a step, and a shell overwrite no longer claims the file had contents
   ("Writing over 'x'; anything already in it is lost"). Their tests are in
   `tests/e2e-fixes.test.ts`.
 

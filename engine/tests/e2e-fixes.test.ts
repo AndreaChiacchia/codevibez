@@ -16,6 +16,16 @@ describe('chains and overwrites', () => {
     );
   });
 
+  it('does not count moving to a folder as a step', () => {
+    expect(translateBash('cd /tmp/project&& grep -rn multiply math.js test', 'plain').text).toBe(
+      'Searching through the project',
+    );
+    expect(translateBash('cd /tmp/project && node --test', 'plain').text).toBe(
+      'Checking everything still works…',
+    );
+    expect(translateBash('cd /tmp/project', 'plain').text).not.toBe('');
+  });
+
   it('never claims an overwritten file had contents it may not have had', () => {
     const line = translateBash('mkdir -p build && echo bundle > build/app.js', 'plain');
     expect(line.severity).toBe('danger');
