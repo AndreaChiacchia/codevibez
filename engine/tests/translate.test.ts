@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './kit.ts';
 import { translate } from '../src/translate.ts';
 import type { CodevibezEvent } from '../src/types.ts';
 

@@ -3,8 +3,8 @@
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
 - This repo is a Claude Code mod (function hooks), not a settings-hooks plugin. Entry: `hooks/hooks.json` names `hooks/register.tsx`; English lives in `hooks/narrate.ts` (rows), `hooks/ledger.ts` (turn summary) and `hooks/story.ts` (the `/codevibez story` pane). No build step: Claude Code loads the TypeScript as written, so every import between plugin files is relative with a `.ts` extension, and the mod may use only `$` (no Node, no npm packages at run time).
-- `engine/` is the vendored translation engine; see `engine/PROVENANCE.md` before changing it. Its tests are `*.spec.ts` on purpose: `claude plugin test` runs every `*.test.ts(x)` in the folder.
-- Checks: `npm ci && npm test` (engine typecheck + specs), `claude plugin test .` (mod tests, both surfaces), `claude plugin validate --strict .`. `npx tsc -p .` typechecks the mod only after Claude Code has loaded the folder once (`claude --plugin-dir .` writes the gitignored `.claude-plugin/types/`).
+- `engine/` is the vendored translation engine; see `engine/PROVENANCE.md` before changing it.
+- Checks: `claude plugin test .` (engine specs and mod tests, both surfaces) and `claude plugin validate --strict .`. There is deliberately no `package.json`: Claude Code runs `npm install` on an installed plugin that has one, which put 47 MB of dev tooling on users' machines. Typecheck with `npx tsc -p .` after Claude Code has loaded the folder once (`claude --plugin-dir .` writes the gitignored `.claude-plugin/types/`).
 - The README quotes validate's `calls:` line. Any new `$` call changes that line, so update the README in the same change. Locked rules: observe only (every `tool.call` hook returns exactly what `next(e)` returned), fail-open to Claude Code's own row, no model, network, process or file-write calls, no log on disk.
 
 ## Maintaining this file

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './kit.ts';
 import {
   BREATH_PERIOD_MS,
   GLYPH_ASCII,
@@ -49,7 +49,7 @@ describe('decorate', () => {
   it('adds a mood and breath phase with full flair', () => {
     const decorated = decorate(busy, 'seed-1', 'full', 0);
     expect(decorated.mood).toBe('busy');
-    expect(decorated.pulse).toBeTypeOf('number');
+    expect(typeof decorated.pulse).toBe('number');
     expect(decorated.text.length).toBeGreaterThan(0);
   });
 

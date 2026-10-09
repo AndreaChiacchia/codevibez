@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './kit.ts';
 import { groupReads } from '../src/group.ts';
 import type { Level, Line } from '../src/types.ts';
 
