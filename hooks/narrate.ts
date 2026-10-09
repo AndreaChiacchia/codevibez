@@ -340,9 +340,6 @@ function bashFailure(command: string, error: string): Sentence {
 
 function describeFailure(view: CallView): Sentence {
   const error = errorText(view.output);
-  if (/doesn't want to proceed|was rejected/i.test(error)) {
-    return sentence('✗', 'Not run: you said no', 'failure');
-  }
   if (/has been denied|permission to use .* (?:was|has been) denied/i.test(error)) {
     return sentence('✗', 'Not run: a permission rule blocked it', 'failure');
   }
@@ -392,10 +389,20 @@ function describeSuccess(view: CallView): Sentence | undefined {
  * The English for one call, or null when this mod does not know the tool or
  * the row's shape, so Claude Code draws its own row.
  */
+const DECLINED = /doesn't want to proceed|user rejected|was rejected/i;
+
+/** Whether the person said no to the call at a permission prompt. */
+export function isDeclined(text: string): boolean {
+  return DECLINED.test(text);
+}
+
 export function describeCall(view: CallView): Narration | null {
   const action = describeAction(view);
   if (action === null) return null;
   if (view.isRunning) return { action };
+  if ((view.isErrored || view.isInterrupted) && isDeclined(errorText(view.output))) {
+    return { action, outcome: sentence('✗', 'Not run: you said no', 'stopped') };
+  }
   if (view.isInterrupted) {
     return { action, outcome: sentence('■', 'Stopped before it finished', 'stopped') };
   }
@@ -407,6 +414,7 @@ export function describeCall(view: CallView): Narration | null {
 type GroupCall = CallView;
 
 const SEARCH_TOOLS = new Set(['Grep', 'Glob', 'WebSearch', 'ToolSearch']);
+const TODO_TOOLS = new Set(['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet']);
 
 /**
  * One line for a run of calls Claude Code folds together (reads, searches,
@@ -416,14 +424,19 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
   if (calls.length === 0) return null;
   const described = calls.map((call) => ({ call, narration: describeCall(call) }));
   if (described.some((item) => item.narration === null)) return null;
+  // A group of one is that call's own line.
+  const only = described.length === 1 ? described[0]?.narration : undefined;
+  if (only !== undefined && only !== null) return [only];
 
   let files = 0;
   let searches = 0;
   let commands = 0;
   let pages = 0;
+  let todos = 0;
   let other = 0;
   for (const { call } of described) {
     if (call.tool === 'Read') files += 1;
+    else if (TODO_TOOLS.has(call.tool)) todos += 1;
     else if (SEARCH_TOOLS.has(call.tool)) searches += 1;
     else if (call.tool === 'Bash') commands += 1;
     else if (call.tool === 'WebFetch') pages += 1;
@@ -434,13 +447,14 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
     searches > 0 ? counted(searches, 'search', 'searches') : '',
     commands > 0 ? counted(commands, 'command') : '',
     pages > 0 ? `${counted(pages, 'web page')} read` : '',
+    todos > 0 ? counted(todos, 'to-do update') : '',
     other > 0 ? counted(other, 'other step') : '',
   ].filter((part) => part !== '');
+  const stem =
+    todos === described.length ? 'Updating its to-do list' : 'Getting familiar with your code';
 
   const lines: Narration[] = [
-    {
-      action: sentence('→', `Getting familiar with your code (${parts.join(', ')})`, 'read'),
-    },
+    { action: sentence('→', `${stem} (${parts.join(', ')})`, 'read') },
   ];
 
   // Anything that is not routine is never folded into the count line.
@@ -463,7 +477,17 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
       ),
     });
   }
-  const stopped = described.filter((item) => item.narration?.outcome?.tone === 'stopped').length;
+  const declined = described.filter(
+    (item) => item.narration?.outcome?.text === 'Not run: you said no',
+  ).length;
+  if (declined > 0) {
+    lines.push({ action: sentence('✗', `Not run: you said no to ${counted(declined, 'step')}`, 'stopped') });
+  }
+  const stopped = described.filter(
+    (item) =>
+      item.narration?.outcome?.tone === 'stopped' &&
+      item.narration.outcome.text !== 'Not run: you said no',
+  ).length;
   if (stopped > 0) {
     lines.push({
       action: sentence('■', `${counted(stopped, 'step')} stopped before finishing`, 'stopped'),

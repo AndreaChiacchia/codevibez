@@ -122,6 +122,20 @@ describe('turn summary', () => {
     ])
   })
 
+  test('a step you said no to is counted as that, not as a failure or a destructive step', async ($, on) => {
+    const logs = engineTurns(on)
+    const refusal = "The user doesn't want to proceed with this tool use. The tool use was rejected."
+    on('tool.call', (_$, e) => {
+      if (e.tool === 'Bash' && e.command === 'rm -rf docs') return { isError: true, result: refusal, text: refusal }
+      return { result: ok('') }
+    })
+    await startTurn($, 'tidy up')
+    await $.tool.call({ tool: 'Bash', command: 'git reset --hard HEAD' })
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf docs' })
+    await endTurn($)
+    expect(logs).toEqual(['⚠ This turn: ran 1 command, 1 destructive step, you said no to 1 step.'])
+  })
+
   test('says nothing when nothing changed and nothing ran', async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: {} }))

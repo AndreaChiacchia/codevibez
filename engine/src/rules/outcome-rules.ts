@@ -65,6 +65,29 @@ function goCounts(output: string): TestCounts | null {
   return passed + failed === 0 ? null : { failed, passed };
 }
 
+// Node's built-in runner ends with summary lines, `# pass 1` (TAP) or
+// `ℹ pass 1` (spec): the word comes before the number.
+function nodeCounts(output: string): TestCounts | null {
+  const passed = output.match(/^\s*(?:#|ℹ)\s*pass\s+(\d+)\s*$/m);
+  const failed = output.match(/^\s*(?:#|ℹ)\s*fail\s+(\d+)\s*$/m);
+  if (passed === null || failed === null) return null;
+  return { failed: numberAt(failed, 1), passed: numberAt(passed, 1) };
+}
+
+// Python's unittest: `Ran 3 tests in 0.01s`, then `OK` or
+// `FAILED (failures=1, errors=1, skipped=2)`.
+function unittestCounts(output: string): TestCounts | null {
+  const ran = output.match(/^Ran (\d+) tests? in /m);
+  const status = output.match(/^(OK|FAILED)\b(?:\s*\(([^)]*)\))?/m);
+  if (ran === null || status === null) return null;
+  const detail = status[2] ?? '';
+  const field = (name: string): number =>
+    Number(new RegExp(`\\b${name}=(\\d+)`).exec(detail)?.[1] ?? 0);
+  const failed = field('failures') + field('errors') + field('unexpected successes');
+  const skipped = field('skipped') + field('expected failures');
+  return { failed, passed: Math.max(0, numberAt(ran, 1) - failed - skipped) };
+}
+
 export function parseTestCounts(output: string): TestCounts | null {
   const lines = output.split('\n');
   const authoritative = lines.filter(
@@ -85,6 +108,12 @@ export function parseTestCounts(output: string): TestCounts | null {
 
   const go = goCounts(output);
   if (go !== null) return go;
+
+  const node = nodeCounts(output);
+  if (node !== null) return node;
+
+  const unittest = unittestCounts(output);
+  if (unittest !== null) return unittest;
 
   const filtered = lines
     .filter(

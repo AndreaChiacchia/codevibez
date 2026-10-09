@@ -4,7 +4,7 @@ import type { Chapter, View } from '../types'
 import { createLedger, observe, summarize } from './ledger.ts'
 import { describeCall, describeGroup, isKnownTool } from './narrate.ts'
 import type { CallView, Narration, Sentence, Tone } from './narrate.ts'
-import { addLines, linesOf, startChapter, storyRows } from './story.ts'
+import { addLines, fitNewest, linesOf, startChapter, storyRows } from './story.ts'
 
 /**
  * codevibez: plain English in place of Claude Code's raw tool rows.
@@ -18,7 +18,6 @@ import { addLines, linesOf, startChapter, storyRows } from './story.ts'
 const VIEW = { plugin: 'codevibez', key: 'view' } as const
 const STORY = { plugin: 'codevibez', key: 'story' } as const
 const MEMO_LIMIT = 500
-const STORY_ROWS = 400
 
 const ENGLISH_ON =
   "English view is on. Type /codevibez to see Claude Code's own rows."
@@ -210,13 +209,20 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     try {
       const { value } = await $.state.get(STORY)
-      const rows = storyRows(value ?? []).slice(-STORY_ROWS)
+      const rows = storyRows(value ?? [])
       if (rows.length === 0) {
         return <Text dimColor>Nothing has happened yet. Each prompt you type starts a chapter here.</Text>
       }
+      // The pane opens short, so it shows the newest steps that fit.
+      const { shown, hidden } = fitNewest(rows, e.props.bodyColumns, e.props.scroll.bodyRows)
       return (
         <Box flexDirection="column">
-          {rows.map((row, index) =>
+          {hidden > 0 && (
+            <Text key="hidden" dimColor>
+              {hidden} earlier {hidden === 1 ? 'line' : 'lines'} not shown; the newest are below
+            </Text>
+          )}
+          {shown.map((row, index) =>
             row.kind === 'heading' ? (
               <Box key={`h${index}`} marginTop={index === 0 ? 0 : 1}>
                 <Text bold>{row.text}</Text>

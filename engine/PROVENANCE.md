@@ -17,5 +17,14 @@ Changes made while vendoring:
   changes (`chmod`, `chown`, `chgrp`) and dropped data (`DROP TABLE`,
   `TRUNCATE`, `dropdb`, a Redis flush, a Prisma reset). Their tests are in
   `tests/danger-extra.test.ts`.
+- Test runs gained the runners that need nothing installed: `node --test`,
+  `deno test`, and `python -m unittest` or `pytest`, with Node's and
+  unittest's summary lines read for exact counts. Their tests are in
+  `tests/runners-extra.test.ts`.
+- Two wordings were fixed after an end-to-end test: a chain of commands is
+  named by its first meaningful step rather than filler such as `sleep` or
+  `git add`, and a shell overwrite no longer claims the file had contents
+  ("Writing over 'x'; anything already in it is lost"). Their tests are in
+  `tests/e2e-fixes.test.ts`.
 
 Everything else is as it was at `93d2176`.

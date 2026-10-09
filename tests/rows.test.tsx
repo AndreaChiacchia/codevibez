@@ -103,7 +103,7 @@ describe('failures and destructive steps are never softened', () => {
       ['git reset --hard HEAD~2', '⚠ Throwing away the last 2 saved checkpoints and any unsaved edits'],
       ['chmod -R 777 public/', "⚠ Changing who can open or change 'public/' and everything inside it"],
       ['psql -c "DROP TABLE users"', '⚠ Permanently erasing stored data (table users)'],
-      ['echo hi > notes.txt', "⚠ Overwriting 'notes.txt' and destroying its previous contents"],
+      ['echo hi > notes.txt', "⚠ Writing over 'notes.txt'; anything already in it is lost"],
     ]
     for (const surface of SURFACES) {
       for (const [command, expected] of cases) {
@@ -134,6 +134,77 @@ describe('failures and destructive steps are never softened', () => {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
       expect((await ui.find({ type: 'Text', text: /Stopped/ }))?.text).toBe('■ Stopped before it finished')
       await ui.unmount()
+    }
+  })
+})
+
+describe('found in the end-to-end test', () => {
+  test("a test run with Node's or Python's built-in runner keeps exact counts", async ($, on) => {
+    engineRows(on)
+    const nodeFailed = row('Bash', bash('node --test'), {
+      isErrored: true,
+      output: 'Error: Exit code 1\nnot ok 2 - multiply\n1..2\n# tests 2\n# suites 0\n# pass 1\n# fail 1\n# cancelled 0',
+    })
+    const nodePassed = row('Bash', bash('sleep 15 && node --test'), {
+      output: { stdout: 'ok 1 - add\nok 2 - multiply\n1..2\n# tests 2\n# pass 2\n# fail 0', stderr: '', interrupted: false },
+    })
+    const pythonFailed = row('Bash', bash('python3 -m unittest'), {
+      isErrored: true,
+      output: 'Exit code 1\nRan 3 tests in 0.001s\n\nFAILED (failures=1)',
+    })
+    for (const surface of SURFACES) {
+      for (const [props, expected] of [
+        [nodeFailed, ['→ Checking everything still works…', '✗ 1 of 2 checks failed']],
+        [nodePassed, ['→ Checking everything still works… (+1 more step)', '✓ All checks pass (2 checks)']],
+        [pythonFailed, ['→ Checking everything still works…', '✗ 1 of 3 checks failed']],
+      ] as const) {
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+        expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual([...expected])
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('a chain is named by the step it is for, not the filler before it', async ($, on) => {
+    engineRows(on)
+    const commit = row('Bash', bash("git add math.js && git commit -m 'First version'"), { output: { stdout: '', stderr: '', interrupted: false } })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: commit })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe('→ Saving a checkpoint of the work (+1 more step)')
+      await ui.unmount()
+    }
+  })
+
+  test('a step refused at the permission prompt says it did not run', async ($, on) => {
+    engineRows(on)
+    const refusal =
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file)."
+    const cases = [
+      row('Bash', bash('rm -rf docs'), { isErrored: true, isInterrupted: true, output: refusal }),
+      row('Edit', { file_path: '/repo/math.js', old_string: 'a', new_string: 'b' }, { isErrored: true, isInterrupted: true, output: 'User rejected tool use' }),
+    ]
+    for (const surface of SURFACES) {
+      for (const props of cases) {
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+        const lines = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+        expect(lines[1]).toBe('✗ Not run: you said no')
+        expect(lines.join('\n').includes('Stopped')).toBe(false)
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('a group of one call is that call\'s own line; a group of to-dos says so', async ($, on) => {
+    engineRows(on)
+    const one = [row('TaskCreate', { subject: 'Fix multiply', description: 'x' })]
+    const todos = [row('TaskCreate', { subject: 'Fix multiply', description: 'x' }), row('TaskUpdate', { taskId: '1', status: 'completed' })]
+    for (const surface of SURFACES) {
+      const single = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolGroup', props: { calls: one, isActive: false, isExpanded: false } })
+      expect((await single.find({ type: 'Text' }))?.text).toBe('→ Adding a to-do: "Fix multiply"')
+      await single.unmount()
+      const pair = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolGroup', props: { calls: todos, isActive: false, isExpanded: false } })
+      expect((await pair.find({ type: 'Text' }))?.text).toBe('→ Updating its to-do list (2 to-do updates)')
+      await pair.unmount()
     }
   })
 })

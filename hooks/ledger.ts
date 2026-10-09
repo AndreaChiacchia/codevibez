@@ -2,6 +2,7 @@ import { detectDanger } from '../engine/src/bash.ts';
 import { isTestCommand } from '../engine/src/rules/bash-rules.ts';
 import { parseTestCounts } from '../engine/src/rules/outcome-rules.ts';
 import { counted, plural } from '../engine/src/words.ts';
+import { isDeclined } from './narrate.ts';
 
 /**
  * What one turn changed, kept in memory only and counted exactly, so the line
@@ -14,6 +15,7 @@ export type Ledger = {
   commands: number;
   failedCommands: number;
   failedSteps: number;
+  declined: number;
   destructive: number;
   tests: TestRun | null;
 };
@@ -41,6 +43,7 @@ export function createLedger(): Ledger {
     commands: 0,
     failedCommands: 0,
     failedSteps: 0,
+    declined: 0,
     destructive: 0,
     tests: null,
   };
@@ -65,6 +68,11 @@ function testRun(output: string, ok: boolean): TestRun {
 export function observe(ledger: Ledger, call: FinishedCall): void {
   if (call.isDenied) return;
   const { tool, input, result } = call;
+  // A step the person said no to never ran: not a command, not a failure.
+  if (call.isError && isDeclined(call.text || (typeof result === 'string' ? result : ''))) {
+    ledger.declined += 1;
+    return;
+  }
 
   if (tool === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : '';
@@ -153,6 +161,9 @@ export function summarize(ledger: Ledger): Summary | null {
   }
   if (ledger.destructive > 0) {
     parts.push(`${counted(ledger.destructive, 'destructive step')}`);
+  }
+  if (ledger.declined > 0) {
+    parts.push(`you said no to ${counted(ledger.declined, 'step')}`);
   }
   if (parts.length === 0) return null;
 

@@ -61,6 +61,23 @@ describe('/codevibez story', () => {
     }
   })
 
+  test('a short pane shows the newest steps and says how many earlier lines are hidden', async ($, on) => {
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+    on('tool.call', () => ({ result: ok('') }))
+    await $.turn.start({ text: 'first prompt', turnId: 't1' } as never)
+    for (let index = 0; index < 8; index += 1) await $.tool.call({ tool: 'Bash', command: `mkdir step${index}` })
+    await $.turn.start({ text: 'second prompt', turnId: 't2' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf build' })
+    const short = { ...PANE, scroll: { offset: 0, bodyRows: 6 } }
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'Pane', requestId: 'codevibez-story', props: short })
+      const shown = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+      expect(shown[0]).toBe('7 earlier lines not shown; the newest are below')
+      expect(shown.slice(-2)).toEqual(['second prompt', "⚠ Deleting 'build' and everything inside it"])
+      await ui.unmount()
+    }
+  })
+
   test('says so when nothing has happened yet', async $ => {
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'Pane', requestId: 'codevibez-story', props: PANE })

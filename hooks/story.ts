@@ -55,6 +55,35 @@ export function linesOf(narration: Narration): StoryLine[] {
 
 export type StoryRow = { kind: 'heading' | 'line' | 'note'; text: string; tone?: StoryLine['tone'] };
 
+/** How many terminal lines a row takes at this width, wrapped. */
+function heightOf(row: StoryRow, columns: number): number {
+  const room = Math.max(10, columns - (row.kind === 'heading' ? 0 : 2));
+  return Math.max(1, Math.ceil(row.text.length / room)) + (row.kind === 'heading' ? 1 : 0);
+}
+
+/**
+ * The newest rows that fit the pane, and how many earlier rows are left out,
+ * so the latest step is always in view.
+ */
+export function fitNewest(
+  rows: readonly StoryRow[],
+  columns: number,
+  height: number,
+): { shown: StoryRow[]; hidden: number } {
+  let used = 0;
+  let start = rows.length;
+  while (start > 0) {
+    const next = rows[start - 1];
+    if (next === undefined) break;
+    const cost = heightOf(next, columns);
+    // Keep one line free to say how much is above, unless everything fits.
+    if (used + cost > height - (start > 1 ? 1 : 0) && start < rows.length) break;
+    used += cost;
+    start -= 1;
+  }
+  return { shown: rows.slice(start), hidden: start };
+}
+
 /** The story as rows to draw, oldest first. */
 export function storyRows(story: readonly Chapter[]): StoryRow[] {
   const rows: StoryRow[] = [];

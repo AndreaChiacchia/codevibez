@@ -39,6 +39,7 @@ const READ_COMMANDS = new Set([
   'wc',
   'stat',
 ]);
+const PYTHONS = new Set(['python', 'python3']);
 const TEST_BINS = new Set([
   'vitest',
   'jest',
@@ -88,6 +89,11 @@ function kindOfSegment(argv: string[]): SegmentKind {
     TEST_BINS.has(bin) ||
     (command === 'cargo' && subcommand === 'test') ||
     (command === 'go' && subcommand === 'test') ||
+    (command === 'deno' && subcommand === 'test') ||
+    (command === 'node' && argv.includes('--test')) ||
+    (PYTHONS.has(command) &&
+      subcommand === '-m' &&
+      ['unittest', 'pytest'].includes(argv[2] ?? '')) ||
     (PACKAGE_MANAGERS.has(command) &&
       (subcommand === 'test' ||
         (subcommand === 'run' && argv[2] === 'test')))
@@ -494,7 +500,7 @@ function dangerLine(
   } else if (danger.reason === 'overwrite') {
     stem =
       level === 'plain'
-        ? `Overwriting '${danger.target}' and destroying its previous contents`
+        ? `Writing over '${danger.target}'; anything already in it is lost`
         : `Overwriting ${danger.target}`;
   } else if (danger.reason === 'permissions') {
     if (level === 'developer') {
@@ -571,7 +577,11 @@ export function translateBash(
     classifySegment(segment, level),
   );
   const actions = classified.filter((segment) => segment.tier === 'action');
+  // Filler (a pause, staging before a commit, an unknown script) never names
+  // a chain when a step that says what the chain is for comes later.
+  const meaningful = actions.filter((segment) => segment.id !== 'bash.generic');
   const picked =
+    meaningful[0] ??
     actions[0] ??
     classified[0] ??
     genericLine(command.trim(), level);
