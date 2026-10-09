@@ -1,0 +1,18 @@
+{
+  "name": "codevibez",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Development tooling for the codevibez Claude Code mod. Nothing here is needed to run the mod.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "tsc -p engine && vitest run",
+    "test:mod": "claude plugin test .",
+    "validate": "claude plugin validate --strict .",
+    "typecheck:mod": "tsc -p ."
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "~3.2.4"
+  }
+}

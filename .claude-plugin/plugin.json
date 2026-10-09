@@ -1,8 +1,9 @@
 {
   "name": "codevibez",
   "displayName": "codevibez",
-  "version": "0.1.0",
-  "description": "Plain-English live narration of everything your coding agent does.",
+  "version": "0.2.0",
+  "description": "Shows what your coding agent does in plain English, in place of Claude Code's raw tool rows.",
   "author": { "name": "leonhong18", "url": "https://github.com/leonhong18" },
-  "license": "MIT"
+  "license": "MIT",
+  "types": "./types/index.d.ts"
 }

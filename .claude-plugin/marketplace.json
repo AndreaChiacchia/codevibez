@@ -1,11 +1,15 @@
 {
   "name": "codevibez",
   "owner": { "name": "leonhong18", "url": "https://github.com/leonhong18" },
+  "metadata": {
+    "description": "codevibez: plain English in place of Claude Code's raw tool rows."
+  },
   "plugins": [
     {
       "name": "codevibez",
       "source": "./",
-      "description": "Plain-English live narration of everything your coding agent does."
+      "version": "0.2.0",
+      "description": "Shows what your coding agent does in plain English, in place of Claude Code's raw tool rows."
     }
   ]
 }
