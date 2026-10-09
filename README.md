@@ -168,6 +168,11 @@ It works mid-turn too, while your agent is still going.
 `ctrl+o` still opens the detailed transcript; in the English view it shows
 every step on its own line, in English.
 
+`/codevibez story` opens a pane that tells the session so far: one chapter
+per prompt you typed, the prompt word for word as its heading, then every step
+in English and the line that ended the turn. Failures and destructive steps
+are always in it.
+
 ## What it writes down
 
 Nothing. codevibez keeps no log and writes no files. What it needs for the
@@ -205,11 +210,12 @@ claude plugin validate ~/.claude/plugins/cache/codevibez/codevibez/0.2.0
 Its `calls:` line lists every call the mod makes, and this is all of it:
 
 ```
-./register.tsx calls: $.command.register, $.state.get (via currentView), $.state.set, $.ui.log, $.ui.resolve
+./register.tsx calls: $.command.register, $.state.get, $.state.set, $.ui.log, $.ui.open, $.ui.resolve
 ```
 
-That is: register the `/codevibez` command, remember which view is on, add the
-line under each answer, and draw rows. No model calls, no network, no files,
+That is: register the `/codevibez` command, remember which view is on and the
+story so far for this session, add the line under each answer, open the story
+pane, and draw rows. No model calls, no network, no files,
 no running programs.
 
 ## Why I am building this

@@ -120,10 +120,16 @@ function testWords(run: TestRun): string {
     : 'the checks passed';
 }
 
+export type Summary = {
+  glyph: string;
+  text: string;
+  tone: 'info' | 'failure' | 'danger';
+};
+
 /**
  * One plain line for the turn, or null when nothing changed and nothing ran.
  */
-export function summarize(ledger: Ledger): string | null {
+export function summarize(ledger: Ledger): Summary | null {
   const parts: string[] = [];
   const files = ledger.created.size + ledger.changed.size;
   if (files > 0) {
@@ -155,6 +161,8 @@ export function summarize(ledger: Ledger): string | null {
     ledger.failedSteps > 0 ||
     (ledger.tests?.kind === 'counted' && ledger.tests.failed > 0) ||
     ledger.tests?.kind === 'failed';
-  const glyph = failed ? '✗' : ledger.destructive > 0 ? '⚠' : '●';
-  return `${glyph} This turn: ${parts.join(', ')}.`;
+  const text = `This turn: ${parts.join(', ')}.`;
+  if (failed) return { glyph: '✗', text, tone: 'failure' };
+  if (ledger.destructive > 0) return { glyph: '⚠', text, tone: 'danger' };
+  return { glyph: '●', text, tone: 'info' };
 }

@@ -1,9 +1,10 @@
 import type { EngineInterface, Register, RenderElement, ResolveInput } from 'claude-code'
 
-import type { View } from '../types'
+import type { Chapter, View } from '../types'
 import { createLedger, observe, summarize } from './ledger.ts'
 import { describeCall, describeGroup, isKnownTool } from './narrate.ts'
 import type { CallView, Narration, Sentence, Tone } from './narrate.ts'
+import { addLines, linesOf, startChapter, storyRows } from './story.ts'
 
 /**
  * codevibez: plain English in place of Claude Code's raw tool rows.
@@ -15,14 +16,16 @@ import type { CallView, Narration, Sentence, Tone } from './narrate.ts'
  */
 
 const VIEW = { plugin: 'codevibez', key: 'view' } as const
+const STORY = { plugin: 'codevibez', key: 'story' } as const
 const MEMO_LIMIT = 500
+const STORY_ROWS = 400
 
 const ENGLISH_ON =
   "English view is on. Type /codevibez to see Claude Code's own rows."
 const RAW_ON =
   'Raw view is on, showing exactly what ran in Claude Code\'s own rows. Type /codevibez to go back to English.'
 const USAGE =
-  'Use /codevibez to switch views, or /codevibez english or /codevibez raw.'
+  'Use /codevibez to switch views, /codevibez english or /codevibez raw to pick one, or /codevibez story to read the session so far.'
 
 type Look = { color?: string; bold?: boolean; dimColor?: boolean }
 
@@ -39,6 +42,11 @@ const LOOK: Readonly<Record<Tone, Look>> = {
 async function currentView($: EngineInterface): Promise<View> {
   const { value } = await $.state.get(VIEW)
   return value === 'raw' ? 'raw' : 'english'
+}
+
+// The story pane reads the session's state; writing it never holds anything up.
+function saveStory($: EngineInterface, story: Chapter[]): void {
+  $.state.set(STORY, story).catch(() => undefined)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,6 +95,7 @@ function draw(
 export const register: Register = on => {
   // Narration state lives in memory for the session and is never written down.
   let ledger = createLedger()
+  let story: Chapter[] = []
   const memo = new Map<string, Narration | null>()
   // Whether each call's row was drawn in English, so its result block below
   // follows the same choice.
@@ -114,7 +123,7 @@ export const register: Register = on => {
       await $.command.register({
         name: 'codevibez',
         description: "Switch between plain English and Claude Code's own tool rows",
-        argumentHint: '[english|raw]',
+        argumentHint: '[english|raw|story]',
         immediate: true,
       })
     } catch {
@@ -125,6 +134,14 @@ export const register: Register = on => {
 
   on('command.run', { command: 'codevibez' }, async ($, e) => {
     const asked = e.args.trim().toLowerCase()
+    if (asked === 'story') {
+      const opened = await $.ui.open({ id: 'codevibez-story', title: 'The story so far', focus: true, closeOnEscape: true })
+      return {
+        text: opened.isPlaced
+          ? 'The story of this session is open in a pane. Esc closes it.'
+          : `The story pane could not open here (${opened.reason}).`,
+      }
+    }
     const now = await currentView($)
     const wanted: View | null =
       asked === ''
@@ -189,23 +206,77 @@ export const register: Register = on => {
     return tree ?? next(e)
   })
 
-  on('turn.start', (_$, e, next) => {
+  on('ui.render', { component: 'Pane', requestId: 'codevibez-story' }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    try {
+      const { value } = await $.state.get(STORY)
+      const rows = storyRows(value ?? []).slice(-STORY_ROWS)
+      if (rows.length === 0) {
+        return <Text dimColor>Nothing has happened yet. Each prompt you type starts a chapter here.</Text>
+      }
+      return (
+        <Box flexDirection="column">
+          {rows.map((row, index) =>
+            row.kind === 'heading' ? (
+              <Box key={`h${index}`} marginTop={index === 0 ? 0 : 1}>
+                <Text bold>{row.text}</Text>
+              </Box>
+            ) : (
+              <Box key={`l${index}`} paddingLeft={2}>
+                <Text {...(row.kind === 'note' ? LOOK.read : LOOK[row.tone ?? 'info'])}>{row.text}</Text>
+              </Box>
+            ),
+          )}
+        </Box>
+      )
+    } catch {
+      return <Text dimColor>The story could not be drawn just now.</Text>
+    }
+  })
+
+  on('turn.start', ($, e, next) => {
     ledger = createLedger()
+    try {
+      if (e.text.trim() !== '') {
+        story = startChapter(story, e.text)
+        saveStory($, story)
+      }
+    } catch {
+      // The story missing a chapter never holds up a prompt.
+    }
     return next(e)
   })
 
-  on('tool.call', async (_$, e, next) => {
+  on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      const { tool, tool_use_id: _id, agentId: _agent, ...input } = e as Record<string, unknown>
+      const { tool, tool_use_id: _id, agentId, ...input } = e as Record<string, unknown>
+      const isError = ran.isError === true
+      const text = typeof ran.text === 'string' ? ran.text : ''
       observe(ledger, {
         tool: String(tool),
         input,
-        isError: ran.isError === true,
+        isError,
         isDenied: ran.deny !== undefined,
         result: ran.result,
-        text: typeof ran.text === 'string' ? ran.text : '',
+        text,
       })
+      // The story follows the main conversation; a helper's own steps stay
+      // inside the line that handed it the task.
+      if (agentId === undefined && ran.deny === undefined) {
+        const narration = describeCall({
+          tool: String(tool),
+          input,
+          isRunning: false,
+          isErrored: isError,
+          isInterrupted: false,
+          output: isError ? text || ran.result : ran.result,
+        })
+        if (narration !== null) {
+          story = addLines(story, linesOf(narration))
+          saveStory($, story)
+        }
+      }
     } catch {
       // A summary that misses one call beats a session that stalls on it.
     }
@@ -216,8 +287,12 @@ export const register: Register = on => {
     const ran = await next(e)
     if (e.agentId !== undefined) return ran
     try {
-      const line = (await currentView($)) === 'english' ? summarize(ledger) : null
-      if (line !== null) $.ui.log(line)
+      const summary = summarize(ledger)
+      if (summary !== null) {
+        if ((await currentView($)) === 'english') $.ui.log(`${summary.glyph} ${summary.text}`)
+        story = addLines(story, [summary], true)
+        saveStory($, story)
+      }
     } catch {
       // No summary line is better than a turn that cannot end.
     }
