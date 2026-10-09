@@ -7,28 +7,60 @@
 Instead of this:
 
 ```
-⏺ Bash(grep -rn "handleLogin" src/)
-⏺ Bash(npm install express)
-⏺ Write(/app/login.ts)
-⏺ Bash(npm test)
-⏺ Bash(rm -rf dist/)
+  Searched for 1 pattern (ctrl+o to expand)
+⏺ Bash(node --test)
+  ⎿  Error: Exit code 1
+     TAP version 13
+     # Subtest: add
+     ok 1 - add
+       ---
+       duration_ms: 0.711542
+       type: 'test'
+       ...
+     # Subtest: multiply
+     not ok 2 - multiply
+     … +59 lines (ctrl+o to expand)
+  Read 1 file (ctrl+o to expand)
+⏺ Update(math.js)
+  ⎿  Added 1 line, removed 1 line
+      3  }
+      4
+      5  function multiply(a, b) {
+      6 -  return a + b;
+      6 +  return a * b;
+      7  }
+      8
+      9  module.exports = { add, multiply };
+⏺ Bash(node --test)
+  ⎿  TAP version 13
+     # Subtest: add
+     ok 1 - add
+     … +25 lines (ctrl+o to expand)
+⏺ Bash(rm -rf build)
+  ⎿  Done
+⏺ Bash(git add math.js && git commit -m 'Fix multiply')
+  ⎿  [main 0f3b832] Fix multiply
+      1 file changed, 1 insertion(+), 1 deletion(-)
 ```
 
 You see this:
 
 ```
 → Searching through the project
-→ Adding a ready-made tool to the project
-✎ Writing new code (1 new file)
 → Checking everything still works…
-  ✗ 3 of 42 checks failed
-⚠ Deleting 'dist/' and everything inside it
-
-codevibez: ✗ This turn: changed 1 file (1 new), ran 4 commands (1 failed), 3 of 42 checks failed, 1 destructive step.
+  ✗ 2 of 3 checks failed
+→ Looking at existing code
+✎ Updating the app's code (1 file)
+→ Checking everything still works…
+  ✓ All checks pass (3 checks)
+⚠ Deleting 'build' and everything inside it
+→ Saving a checkpoint of the work (+1 more step)
+⏺ codevibez: ✗ This turn: changed 1 file, ran 5 commands (1 failed), all 3 checks passed, 1 destructive step.
 ```
 
-The English takes the place of Claude Code's own rows. It does not sit
-beside them.
+Both are the same turn of a real session, with the agent's own sentences in
+between left out. The English takes the place of Claude Code's own rows. It
+does not sit beside them.
 
 ## Why
 
@@ -62,7 +94,8 @@ coming out. Everything below is just the detail of making that trustworthy.
 
 ## What it translates
 
-- **Commands being run.** Installing, testing, building, committing, deleting.
+- **Commands being run.** Searching, testing, committing, starting a branch,
+  deleting.
 - **Files being touched.** Created, edited, read, searched, and how many.
 - **Results coming back.** What passed, what failed, and how badly.
 - **What the turn changed,** in one line under the answer: files changed,
@@ -76,25 +109,26 @@ opt-in when it arrives; the reason it is not built yet is under How it works.
 
 ## Before and after
 
-Every line in the right column is real output from the engine in this project.
-None of it was written by hand for the README, which is a low bar that a
-surprising amount of software does not clear:
+Every line in the right column was captured from a real Claude Code session
+with codevibez installed. None of it was written by hand for the README, which
+is a low bar that a surprising amount of software does not clear:
 
-| What your agent runs | What you get told |
+| What your agent did | What you were told |
 |---|---|
-| `grep -rn "handleLogin" src/` | → Searching through the project |
-| `npm install express` | → Adding a ready-made tool to the project |
-| `npm ci` | → Setting up the project's building blocks |
-| `mkdir -p src/components` | → Creating a folder |
-| `curl -s https://api.example.com/v1` | → Fetching something from the internet |
+| `grep -rn multiply math.js test` | → Searching through the project |
+| read a file | → Looking at existing code |
 | write a new file | ✎ Writing new code (1 new file) |
-| edit an existing file | ✎ Updating the app's code (1 file) |
-| `git commit -m "add login"` | → Saving a checkpoint of the work |
-| `git checkout -b feature/login` | → Starting work on a separate track |
-| `npm test` | → Checking everything still works… |
-| `npm test`, and it fails | ✗ 3 of 42 checks failed |
-| `npm test`, and it passes | ✓ All checks pass (42 checks) |
-| `rm -rf dist/` | ⚠ Deleting 'dist/' and everything inside it |
+| edit a file | ✎ Updating the app's code (1 file) |
+| `mkdir -p docs` | → Creating a folder |
+| `node --test`, and it fails | → Checking everything still works…<br>✗ 2 of 3 checks failed |
+| `node --test`, and it passes | → Checking everything still works…<br>✓ All checks pass (3 checks) |
+| `git add math.js && git commit -m 'Fix multiply'` | → Saving a checkpoint of the work (+1 more step) |
+| `git checkout -b feature/docs` | → Starting work on a separate track |
+| fetch `https://example.com` | → Reading a web page (example.com) |
+| hand a task to a helper agent | → Handing a task to a helper: "Read math.js and describe what it does" |
+| `rm -rf build` | ⚠ Deleting 'build' and everything inside it |
+| `git reset --hard HEAD` | ⚠ Throwing away every unsaved edit in the project |
+| `mkdir -p build && echo bundle > build/app.js` | ⚠ Writing over 'build/app.js'; anything already in it is lost |
 
 ## One warning
 
@@ -106,50 +140,56 @@ is one rule codevibez does not break:
 decorated.**
 
 ```
-⚠ Deleting 'node_modules' and everything inside it
-✗ 3 of 42 checks failed
-✗ The checks failed; codevibez could not read how many
-✗ Something needed for that step could not be found (exit code 1)
+⚠ Deleting 'build' and everything inside it
+⚠ Throwing away every unsaved edit in the project
+✗ 2 of 3 checks failed
+✗ Something went wrong while running that step (exit code 1)
+⚠ Deleting 'docs' and everything inside it
+  ✗ Not run: you said no
 ```
 
-It names exactly what is being deleted instead of guessing at a number. Force
-pushes, hard resets, overwritten files, permission changes and dropped
-database tables get the same treatment. It says how many checks failed, and
-when it cannot work that out, it says exactly that. A failed command keeps its
-exit code. And it never guesses that something succeeded: when it cannot
-determine the result, it stays silent.
+It names exactly what is being deleted instead of guessing at a number. Hard
+resets and overwritten files get the same treatment. It says exactly how many
+checks failed, and a failed command keeps its exit code. When you say no at a
+permission prompt, the line says the step did not run. And it never guesses
+that something succeeded: when it cannot determine the result, it stays
+silent.
 
-These lines are also bold and colored, while routine reading is dimmed. That
-is deliberate. Routine work fades into the background. Anything you actually
-need to look at stands out.
+These lines are also bold and colored, red for a failure and yellow for
+anything destructive, while routine steps stay plain. That is deliberate.
+Routine work fades into the background. Anything you actually need to look at
+stands out.
 
 ## Install
 
-You need Claude Code 2.1.287 or later in the terminal, or 2.1.286 or later in
-the Code tab of the Desktop app. Tested on 2.1.295.
-
-In a Claude Code terminal session:
+You need Claude Code 2.1.287 or later. In your terminal:
 
 ```
-/plugin install codevibez --marketplace leonhong18/codevibez
+claude plugin install codevibez --marketplace leonhong18/codevibez
 ```
 
-Answer `y` to add the marketplace, then pick a scope. No build step, no
-account, no dependencies added to your machine, no newsletter. The English
-appears as your agent works, in that session and every one after.
+That adds the codevibez marketplace and installs the mod for your user. No
+build step, no account, no dependencies added to your machine, no newsletter.
+Start Claude Code and the English appears as your agent works.
 
-To uninstall: `/plugin uninstall codevibez`
+To uninstall:
+
+```
+claude plugin uninstall codevibez
+```
 
 ## Where it shows up
 
-- **The terminal and the Desktop app's Code tab:** every tool call's row is
-  plain English.
+- **The terminal:** each tool call's row is plain English. Tested on Claude
+  Code 2.1.295 and 2.1.296. Mods also draw in the Code tab of the Desktop app
+  (2.1.286 or later); codevibez's tests cover that surface, but it has not
+  been tried there by hand yet.
 - **The permission prompt stays as Claude Code draws it.** When Claude Code
   asks whether a step may run, the question and the step it is about show
   Claude Code's own words, so you approve exactly what will run. The English
   row takes over once you answer.
-- **Not drawn:** the VS Code chat panel, `claude -p`, and cloud sessions. Those
-  show Claude Code's own output, unchanged.
+- **Not drawn:** the VS Code chat panel and cloud sessions. `claude -p` prints
+  exactly what it printed before.
 
 ## The one switch
 
@@ -169,9 +209,10 @@ It works mid-turn too, while your agent is still going.
 every step on its own line, in English.
 
 `/codevibez story` opens a pane that tells the session so far: one chapter
-per prompt you typed, the prompt word for word as its heading, then every step
-in English and the line that ended the turn. Failures and destructive steps
-are always in it.
+per prompt you typed, the prompt word for word as its heading, then each step
+in English and the line that ended the turn. When the pane is too short for
+all of it, it shows the newest steps and says how many earlier lines are
+above. Failures and destructive steps are always kept in it.
 
 ## What it writes down
 
@@ -215,8 +256,8 @@ Its `calls:` line lists every call the mod makes, and this is all of it:
 
 That is: register the `/codevibez` command, remember which view is on and the
 story so far for this session, add the line under each answer, open the story
-pane, and draw rows. No model calls, no network, no files,
-no running programs.
+pane, and draw rows. No model calls, no network, no files, no running
+programs.
 
 ## Why I am building this
 
