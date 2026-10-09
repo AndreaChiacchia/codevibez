@@ -2,7 +2,7 @@
 
 ![Pretending to read code vs Reading 'code'](codevibez.jpg)
 
-**A simple idea: make English the next coding language (everywhere).**
+**A simple idea: make natural language the next coding language (everywhere).**
 
 codevibez replaces Claude Code's raw tool-call rows with plain English.
 Failures, deletions and other risky steps are never softened. Type
@@ -58,6 +58,6 @@ claude plugin uninstall codevibez
 
 ## Contributing
 
-Found a step it described badly? Open an issue at
+Found a bug? Open an issue at
 https://github.com/leonhong18/codevibez/issues with what ran and what you
 expected it to say.
