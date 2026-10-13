@@ -138,6 +138,91 @@ describe('failures and destructive steps are never softened', () => {
   })
 })
 
+describe('0.2.1: no raw row first, and no bare catch-all', () => {
+  test('a row drawn first with an empty input is English once the input arrives', async ($, on) => {
+    engineRows(on)
+    for (const surface of SURFACES) {
+      const streaming = row('Bash', {}, { isRunning: false })
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: streaming })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe(ENGINE_ROW)
+      // Same flags as the first draw: only the input changed.
+      await ui.redraw({ ...streaming, input: bash('git log --oneline -3') })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe('→ Checking the state of the work')
+      await ui.unmount()
+    }
+  })
+
+  test("an unknown routine command shows the step's own description", async ($, on) => {
+    engineRows(on)
+    const props = row('Bash', bash('docker compose up -d', { description: 'Start the app services' }), {
+      output: { stdout: '', stderr: '', interrupted: false },
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe('→ Start the app services')
+      await ui.unmount()
+    }
+  })
+
+  test('a long or secret-bearing description is cut to 80 characters and scrubbed', async ($, on) => {
+    engineRows(on)
+    const long = `Run the importer with token=sk-ant-api03-abcdefghijklmnop ${'and then keep going '.repeat(6)}`
+    const props = row('Bash', bash('./scripts/import.sh', { description: long }))
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+      const shown = (await ui.find({ type: 'Text' }))?.text ?? ''
+      expect(shown).toContain('[REDACTED]')
+      expect(shown.includes('abcdefghijklmnop')).toBe(false)
+      expect(shown.length).toBeLessThanOrEqual(2 + 80 + 1)
+      await ui.unmount()
+    }
+  })
+
+  test('a destructive command with a soothing description keeps its warning', async ($, on) => {
+    engineRows(on)
+    const props = row('Bash', bash('rm -rf build', { description: 'Tidy up a little' }), {
+      output: { stdout: '', stderr: '', interrupted: false },
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+      const line = await ui.find({ type: 'Text' })
+      expect(line?.text).toBe("⚠ Deleting 'build' and everything inside it")
+      expect(line?.props).toMatchObject({ color: 'warning', bold: true })
+      await ui.unmount()
+    }
+  })
+
+  test('a failed, stopped or refused unknown command keeps the rule-based lines', async ($, on) => {
+    engineRows(on)
+    const refusal = "The user doesn't want to proceed with this tool use. The tool use was rejected."
+    const cases = [
+      [row('Bash', bash('my-tool --flag', { description: 'Start the server' }), { isErrored: true, output: 'Exit code 3\nboom' }),
+        ["→ Running one of the project's own tools", '✗ Something went wrong while running that step (exit code 3)']],
+      [row('Bash', bash('my-tool --flag', { description: 'Start the server' }), { isErrored: true, isInterrupted: true, output: 'Interrupted' }),
+        ["→ Running one of the project's own tools", '■ Stopped before it finished']],
+      [row('Bash', bash('my-tool --flag', { description: 'Start the server' }), { isErrored: true, isInterrupted: true, output: refusal }),
+        ["→ Running one of the project's own tools", '✗ Not run: you said no']],
+    ] as const
+    for (const surface of SURFACES) {
+      for (const [props, expected] of cases) {
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+        expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual([...expected])
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('a call with no description falls back to the old catch-all', async ($, on) => {
+    engineRows(on)
+    const props = row('Bash', { command: 'my-tool --flag' }, { output: { stdout: '', stderr: '', interrupted: false } })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe("→ Running one of the project's own tools")
+      await ui.unmount()
+    }
+  })
+})
+
 describe('found in the end-to-end test', () => {
   test("a test run with Node's or Python's built-in runner keeps exact counts", async ($, on) => {
     engineRows(on)

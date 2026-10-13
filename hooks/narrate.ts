@@ -21,6 +21,7 @@ export type Sentence = {
   glyph: string;
   text: string;
   tone: Tone;
+  source?: 'description';
 };
 
 export type Narration = {
@@ -72,6 +73,11 @@ function fromLine(line: Line): Sentence {
   return sentence(line.glyph, line.text, tone);
 }
 
+function plainDescription(said: string): string {
+  const one = formatPrompt(said.replace(/[.\s]+$/, ''), 80);
+  return one.charAt(0).toUpperCase() + one.slice(1);
+}
+
 function hostOf(url: string): string | null {
   try {
     return new URL(url).hostname || null;
@@ -104,7 +110,15 @@ function describeAction(view: CallView): Sentence | null {
     case 'Bash': {
       const command = text(input.command);
       if (command === null) return null;
-      const line = fromLine(translateBash(command, LEVEL));
+      const rule = translateBash(command, LEVEL);
+      // A routine step the rules cannot name reads as the step's own
+      // description. Destructive steps (their own ids) and failed or stopped
+      // calls never take this path: they keep the rule-based line.
+      const said = text(input.description);
+      const line =
+        rule.id === 'bash.generic' && said !== null && !view.isErrored && !view.isInterrupted
+          ? { ...sentence('→', plainDescription(said), rule.tier === 'read' ? 'read' : 'info'), source: 'description' as const }
+          : fromLine(rule);
       return input.run_in_background === true
         ? { ...line, text: `${line.text} (in the background)` }
         : line;

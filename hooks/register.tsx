@@ -52,6 +52,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** A cheap signature of what the translation reads from a call's input. */
+function signature(input: unknown): string {
+  if (!isRecord(input)) return typeof input
+  const field = (name: string): string => {
+    const value = input[name]
+    return typeof value === 'string' ? value : ''
+  }
+  let length = -1
+  try {
+    length = JSON.stringify(input).length
+  } catch {
+    length = -1
+  }
+  return [Object.keys(input).length, length, field('command'), field('description'), field('file_path')].join('|')
+}
+
 function asCallView(value: unknown): CallView | null {
   if (!isRecord(value) || typeof value.tool !== 'string') return null
   return {
@@ -95,25 +111,34 @@ export const register: Register = on => {
   // Narration state lives in memory for the session and is never written down.
   let ledger = createLedger()
   let story: Chapter[] = []
-  const memo = new Map<string, Narration | null>()
+  const memo = new Map<string, Narration>()
   // Whether each call's row was drawn in English, so its result block below
   // follows the same choice.
   const drawnInEnglish = new Map<string, boolean>()
 
   const narrate = (id: string, view: CallView): Narration | null => {
-    const key = `${id}|${view.isRunning}|${view.isErrored}|${view.isInterrupted}|${view.output === undefined}`
-    if (memo.has(key)) return memo.get(key) ?? null
+    // Claude Code draws a row first with an empty input, then again once the
+    // input has arrived, so what the translation reads is part of the key, and
+    // a row that could not be read yet is never cached.
+    const key = `${id}|${view.isRunning}|${view.isErrored}|${view.isInterrupted}|${view.output === undefined}|${signature(view.input)}`
+    const cached = memo.get(key)
+    if (cached !== undefined) return cached
     const narration = describeCall(view)
+    if (drawnInEnglish.size >= MEMO_LIMIT) {
+      const oldest = drawnInEnglish.keys().next().value
+      if (oldest !== undefined) drawnInEnglish.delete(oldest)
+    }
+    if (narration === null) {
+      // An input still streaming in says nothing about the finished row.
+      if (isRecord(view.input) && Object.keys(view.input).length > 0) drawnInEnglish.set(id, false)
+      return null
+    }
     if (memo.size >= MEMO_LIMIT) {
       const oldest = memo.keys().next().value
       if (oldest !== undefined) memo.delete(oldest)
     }
     memo.set(key, narration)
-    if (drawnInEnglish.size >= MEMO_LIMIT) {
-      const oldest = drawnInEnglish.keys().next().value
-      if (oldest !== undefined) drawnInEnglish.delete(oldest)
-    }
-    drawnInEnglish.set(id, narration !== null)
+    drawnInEnglish.set(id, true)
     return narration
   }
 
