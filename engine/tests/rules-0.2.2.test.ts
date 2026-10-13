@@ -50,6 +50,8 @@ const golden: Array<[string, string]> = [
   ['if [ -f .env ]; then echo yes; fi', 'Checking whether something is there'],
   ['for f in src/*.ts; do echo $f; done', 'Repeating a step'],
   ['clear', 'Clearing the screen'],
+  ['sysctl -n hw.ncpu hw.memsize', 'Checking details about the computer'],
+  ['system_profiler SPHardwareDataType | head -12', 'Checking details about the computer'],
 ];
 
 describe('0.2.2 rules', () => {

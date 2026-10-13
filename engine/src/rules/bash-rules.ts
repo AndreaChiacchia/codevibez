@@ -378,7 +378,7 @@ function moreLine(argv: string[]): SegLine | null {
   if (['which', 'type', 'whereis', 'realpath'].includes(command) || (command === 'command' && sub === '-v')) return line('Checking where something is on the computer');
   if (['env', 'printenv'].includes(command)) return line("Checking the computer's settings");
   if (['ps', 'lsof', 'pgrep', 'top'].includes(command)) return line('Checking which programs are running');
-  if (['date', 'uname', 'whoami', 'hostname', 'id', 'history', 'sw_vers'].includes(command)) return line('Checking details about the computer');
+  if (['date', 'uname', 'whoami', 'hostname', 'id', 'history', 'sw_vers', 'sysctl', 'system_profiler', 'uptime', 'arch', 'vm_stat', 'nproc', 'lscpu', 'free', 'ioreg'].includes(command)) return line('Checking details about the computer');
   if (command === 'test' || command === '[' || command === '[[') return line('Checking whether something is there');
   if (command === 'diff' || command === 'cmp') return line('Comparing two files');
   if (command === 'sed' && args.some((a) => a === '-i' || a.startsWith('-i'))) return line('Changing text inside a file', 'action');
