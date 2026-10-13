@@ -27,5 +27,11 @@ Changes made while vendoring:
   as a step, and a shell overwrite no longer claims the file had contents
   ("Writing over 'x'; anything already in it is lost"). Their tests are in
   `tests/e2e-fixes.test.ts`.
+- 0.2.2 added broader wording rules (installers, version checks, project
+  tasks, helper tools, scripts and snippets, process, text, archive,
+  container and server tools, more git commands, env prefixes, wrappers,
+  absolute paths, `git -C`, shell keywords and heredoc bodies), and the danger
+  analysis now sees through `timeout` and `nohup`. Their tests are in
+  `tests/rules-0.2.2.test.ts`.
 
 Everything else is as it was at `93d2176`.

@@ -151,7 +151,7 @@ const SEVERITY: Record<DangerHit['reason'], number> = {
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const DELETE_EXECUTABLES = new Set(['rm', 'rmdir', 'rimraf', 'del']);
-const WRAPPERS = new Set(['sudo', 'env', 'command', 'nice', 'time', 'doas']);
+const WRAPPERS = new Set(['sudo', 'env', 'command', 'nice', 'time', 'doas', 'timeout', 'nohup']);
 /** Control-flow words that sit where a command name would otherwise be. */
 const KEYWORDS = new Set([
   'if', 'then', 'else', 'elif', 'fi',
@@ -282,9 +282,12 @@ function stripWrapper(argv: string[]): string[] {
         (wrapper === 'sudo' && ['-u', '-g', '-h', '-p', '-C', '-T', '-R', '-D'].includes(option)) ||
         (wrapper === 'env' && ['-u', '--unset'].includes(option)) ||
         (wrapper === 'nice' && option === '-n') ||
-        (wrapper === 'time' && ['-f', '-o'].includes(option));
+        (wrapper === 'time' && ['-f', '-o'].includes(option)) ||
+        (wrapper === 'timeout' && ['-s', '--signal', '-k', '--kill-after'].includes(option));
       if (takesValue) normalized.shift();
     }
+    // `timeout 10 rm -rf dist`: the duration comes before the command it runs.
+    if (wrapper === 'timeout') normalized.shift();
     dropNoise();
   }
 

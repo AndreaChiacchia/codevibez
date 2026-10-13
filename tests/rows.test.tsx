@@ -154,7 +154,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
 
   test("an unknown routine command shows the step's own description", async ($, on) => {
     engineRows(on)
-    const props = row('Bash', bash('docker compose up -d', { description: 'Start the app services' }), {
+    const props = row('Bash', bash('qq-tool --serve', { description: 'Start the app services' }), {
       output: { stdout: '', stderr: '', interrupted: false },
     })
     for (const surface of SURFACES) {
@@ -167,7 +167,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
   test('a long or secret-bearing description is cut to 80 characters and scrubbed', async ($, on) => {
     engineRows(on)
     const long = `Run the importer with token=sk-ant-api03-abcdefghijklmnop ${'and then keep going '.repeat(6)}`
-    const props = row('Bash', bash('./scripts/import.sh', { description: long }))
+    const props = row('Bash', bash('qq-tool import', { description: long }))
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
       const shown = (await ui.find({ type: 'Text' }))?.text ?? ''
@@ -354,11 +354,62 @@ describe('the rows around each call', () => {
   })
 })
 
-describe('leaves what it does not know to Claude Code', () => {
-  test('an unknown tool keeps Claude Code\'s own row', async ($, on) => {
+describe('0.2.2: more of Claude Code in plain words', () => {
+  test("Claude Code's own tools get plain lines on terminal and desktop", async ($, on) => {
+    engineRows(on)
+    const cases: Array<[string, unknown, string]> = [
+      ['SendMessage', { to: 'helper', message: 'hi' }, '→ Sending a message to a helper'],
+      ['ScheduleWakeup', { delaySeconds: 600, prompt: 'x', reason: 'x' }, '→ Setting a reminder to check back later'],
+      ['CronCreate', { cron: '0 9 * * *', prompt: 'x' }, '→ Scheduling a job to repeat'],
+      ['EnterWorktree', { name: 'fix' }, '→ Starting work in a separate copy of the project'],
+      ['Workflow', { name: 'review' }, '→ Running a planned set of helper steps'],
+      ['ReadMcpResourceTool', { server: 's', uri: 'u' }, '→ Reading from a connected service'],
+      ['PushNotification', { message: 'done' }, '→ Sending you a notification'],
+      ['memory_write', { content: 'x' }, '✎ Saving a note for later'],
+    ]
+    for (const surface of SURFACES) {
+      for (const [tool, input, expected] of cases) {
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: row(tool, input) })
+        expect((await ui.find({ type: 'Text' }))?.text).toBe(expected)
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('removing a separate copy of the project is a warning', async ($, on) => {
+    engineRows(on)
+    const props = row('ExitWorktree', { action: 'remove', discard_changes: true })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+      const line = await ui.find({ type: 'Text' })
+      expect(line?.text).toBe('⚠ Removing the separate copy of the project and throwing away its unsaved edits')
+      expect(line?.props).toMatchObject({ color: 'warning', bold: true })
+      await ui.unmount()
+    }
+  })
+
+  test('a group made only of commands says it is looking around', async ($, on) => {
+    engineRows(on)
+    const calls = [row('Bash', bash('ls -la')), row('Bash', bash('git status')), row('Bash', bash('wc -l README.md'))]
+    const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('→ Looking around the project (3 commands)')
+  })
+})
+
+describe('leaves what it cannot read to Claude Code', () => {
+  test('any other tool gets a plain line that keeps its name', async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: row('BrandNewTool', { anything: 1 }) })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe("→ Using one of Claude Code's tools (brand new tool)")
+      await ui.unmount()
+    }
+  })
+
+  test('a tool whose input is not an object keeps Claude Code\'s own row', async ($, on) => {
+    engineRows(on)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: row('BrandNewTool', 'raw text') })
       expect((await ui.find({ type: 'Text' }))?.text).toBe(ENGINE_ROW)
       await ui.unmount()
     }
@@ -375,9 +426,9 @@ describe('leaves what it does not know to Claude Code', () => {
     }
   })
 
-  test('a group holding an unknown tool keeps Claude Code\'s own line', async ($, on) => {
+  test('a group holding a call it cannot read keeps Claude Code\'s own line', async ($, on) => {
     engineRows(on)
-    const calls = [row('Read', { file_path: '/repo/a.ts' }), row('BrandNewTool', {})]
+    const calls = [row('Read', { file_path: '/repo/a.ts' }), row('Bash', { cmd: 'ls' })]
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
     expect((await ui.find({ type: 'Text' }))?.text).toBe(ENGINE_ROW)
   })

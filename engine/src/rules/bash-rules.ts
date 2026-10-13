@@ -1,4 +1,4 @@
-import { detectDanger, splitSegments, tokenize } from '../bash.ts';
+import { detectDanger, splitSegments, stripHeredocs, tokenize } from '../bash.ts';
 import { counted, plural } from '../words.ts';
 import type { Level, Line } from '../types.ts';
 
@@ -40,7 +40,7 @@ const READ_COMMANDS = new Set([
   'stat',
 ]);
 const PYTHONS = new Set(['python', 'python3']);
-const NAVIGATION = new Set(['cd', 'pushd', 'popd', 'export', 'set']);
+const NAVIGATION = new Set(['cd', 'pushd', 'popd', 'export', 'set', 'done', 'fi', 'esac']);
 const TEST_BINS = new Set([
   'vitest',
   'jest',
@@ -100,6 +100,26 @@ function kindOfSegment(argv: string[]): SegmentKind {
         (subcommand === 'run' && argv[2] === 'test')))
   ) {
     return 'test';
+  }
+
+  if (
+    (['pip', 'pip3', 'poetry', 'brew', 'gem', 'cargo'].includes(command) && ['install', 'add'].includes(subcommand)) ||
+    (command === 'uv' && ['sync', 'add', 'pip'].includes(subcommand)) ||
+    (['yarn', 'pnpm', 'bun'].includes(command) && subcommand === 'add')
+  ) {
+    return 'install';
+  }
+
+  if (command === 'make' && (subcommand === 'test' || subcommand === 'check')) return 'test';
+  if (PACKAGE_MANAGERS.has(command) && subcommand === 'run' && /^(test|e2e)([:-]|$)/.test(argv[2] ?? '')) return 'test';
+  if (command === 'swift' && subcommand === 'test') return 'test';
+  if ((command === 'swift' && subcommand === 'build') || command === 'xcodebuild') return 'build';
+  if (
+    (command === 'make' && (subcommand === '' || ['build', 'all'].includes(subcommand))) ||
+    (['yarn', 'pnpm', 'bun'].includes(command) && subcommand === 'build') ||
+    (command === 'docker' && subcommand === 'build')
+  ) {
+    return 'build';
   }
 
   if (
@@ -168,6 +188,21 @@ function testLine(level: Level, runner: string): SegLine {
 
 function gitLine(argv: string[], level: Level): SegLine {
   const subcommand = argv[1] ?? '';
+  const positional = argv.slice(2).filter((a) => !a.startsWith('-'));
+  if (subcommand === '--version' || subcommand === 'version') return line('Checking which version of git is installed');
+  if (
+    ['blame', 'grep', 'ls-files', 'rev-parse', 'remote', 'shortlog', 'describe', 'reflog'].includes(subcommand) ||
+    (subcommand === 'tag' && positional.length === 0) ||
+    (subcommand === 'stash' && positional[0] === 'list') ||
+    (subcommand === 'branch' && positional.length === 0)
+  ) {
+    return line('Checking the state of the work');
+  }
+  if (subcommand === 'fetch') return line('Bringing in the latest shared work', 'action');
+  if (subcommand === 'stash' && ['pop', 'apply'].includes(positional[0] ?? '')) return line('Bringing back edits that were set aside', 'action');
+  if (subcommand === 'stash' && positional.length === 0) return line('Setting unsaved edits aside for later', 'action');
+  if (subcommand === 'rebase') return line('Replaying the work on top of another track', 'action');
+  if (subcommand === 'cherry-pick') return line('Copying a saved change from another track', 'action');
 
   if (['status', 'log', 'diff', 'show'].includes(subcommand)) {
     return {
@@ -242,7 +277,8 @@ function gitLine(argv: string[], level: Level): SegLine {
   const selected = level === 'plain' ? plain[subcommand] : developer[subcommand];
   return {
     glyph: '→',
-    id: 'bash.generic',
+    // A git step with its own sentence is not the catch-all.
+    id: selected === undefined ? 'bash.generic' : `bash.git.${subcommand}`,
     tier: 'action',
     stem: selected ?? (level === 'plain' ? 'Managing saved work' : 'Running git'),
   };
@@ -278,8 +314,124 @@ function genericLine(segment: string, level: Level): SegLine {
   };
 }
 
+const ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/;
+// Shell words that only lead into the real command (`then echo hi`, `if [ -f x ]`).
+const FLOW = new Set(['do', 'then', 'else', 'elif', 'if']);
+
+/** The words that say what a segment runs: no env prefix, wrapper or path. */
+export function normalizeArgv(raw: string[]): string[] {
+  let argv = [...raw];
+  while (argv[0] !== undefined && (ASSIGN.test(argv[0]) || FLOW.has(argv[0]))) argv.shift();
+  for (;;) {
+    const first = argv[0] ?? '';
+    if (first === 'timeout') argv = argv.slice(2);
+    else if (['time', 'nice', 'sudo', 'nohup'].includes(first)) argv = argv.slice(1);
+    else if (first.endsWith('/env') || (first === 'env' && argv.length > 1 && !argv[1]?.startsWith('-') && argv[1] !== '|')) {
+      argv = argv.slice(1);
+      while (argv[0] !== undefined && ASSIGN.test(argv[0])) argv.shift();
+    } else break;
+  }
+  if ((argv[0] ?? '').includes('/') && !(argv[0] ?? '').startsWith('./')) argv[0] = (argv[0] ?? '').split('/').pop() ?? '';
+  if (argv[0] === 'git' && argv[1] === '-C') argv.splice(1, 2);
+  if (PYTHONS.has(argv[0] ?? '') && argv[1] === '-m' && argv[2] === 'pip') argv = ['pip', ...argv.slice(3)];
+  return argv;
+}
+
+function line(stem: string, tier: Line['tier'] = 'read', id = 'bash.more'): SegLine {
+  return { glyph: '→', id, tier, stem };
+}
+
+function scriptName(path: string): string {
+  return path.split('/').pop() ?? path;
+}
+
+const NPM_TASKS: Record<string, string> = {
+  lint: 'Checking the code for mistakes',
+  typecheck: 'Checking the code for mistakes',
+  'type-check': 'Checking the code for mistakes',
+  format: "Tidying the code's layout",
+  dev: 'Starting the app',
+  start: 'Starting the app',
+  serve: 'Starting the app',
+  preview: 'Starting the app',
+};
+const HELPER_TOOLS: Record<string, string> = {
+  tsc: 'Checking the code for mistakes',
+  eslint: 'Checking the code for mistakes',
+  prettier: "Tidying the code's layout",
+  vite: 'Starting the app',
+};
+
+/** Common commands the original rules had no sentence for. */
+function moreLine(argv: string[]): SegLine | null {
+  const [command = '', sub = '', third = ''] = argv;
+  const args = argv.slice(1);
+  if (args.length > 0 && args.every((a) => ['--version', '-v', '-V', '-version', 'version'].includes(a))) {
+    return line(`Checking which version of ${command} is installed`);
+  }
+  if (command === 'clear') return line('Clearing the screen');
+  if (FLOW.has(command) || ['for', 'while', 'until', 'done', 'fi', 'esac'].includes(command)) return null;
+  if (['tree'].includes(command)) return line('Looking around the project');
+  if (['less', 'more', 'bat'].includes(command)) return line('Looking at existing files');
+  if (['du', 'df'].includes(command)) return line('Checking how much space things take up');
+  if (['file', 'stat'].includes(command)) return line("Looking at a file's details");
+  if (['which', 'type', 'whereis', 'realpath'].includes(command) || (command === 'command' && sub === '-v')) return line('Checking where something is on the computer');
+  if (['env', 'printenv'].includes(command)) return line("Checking the computer's settings");
+  if (['ps', 'lsof', 'pgrep', 'top'].includes(command)) return line('Checking which programs are running');
+  if (['date', 'uname', 'whoami', 'hostname', 'id', 'history', 'sw_vers'].includes(command)) return line('Checking details about the computer');
+  if (command === 'test' || command === '[' || command === '[[') return line('Checking whether something is there');
+  if (command === 'diff' || command === 'cmp') return line('Comparing two files');
+  if (command === 'sed' && args.some((a) => a === '-i' || a.startsWith('-i'))) return line('Changing text inside a file', 'action');
+  if (['sed', 'awk', 'cut', 'sort', 'uniq', 'tr', 'xargs', 'column', 'nl'].includes(command)) return line("Reading through a file's contents");
+  if (command === 'jq' || command === 'yq') return line('Pulling details out of a data file');
+  if (['kill', 'pkill', 'killall'].includes(command)) return line('Stopping a running program', 'action');
+  if (command === 'ping' || command === 'dig' || command === 'nslookup') return line('Checking the internet connection');
+  if (command === 'open' || command === 'xdg-open') return line('Opening something on your computer', 'action');
+  if (command === 'tar' && args.some((a) => /^-?[a-z]*x/.test(a))) return line('Unpacking an archive', 'action');
+  if (command === 'tar' || command === 'zip') return line('Packing files into an archive', 'action');
+  if (command === 'unzip' || command === 'gunzip') return line('Unpacking an archive', 'action');
+  if (command === 'ln') return line('Linking to a file or folder', 'action');
+  if (command === 'openssl') return line('Making or checking a security key', 'action');
+  if (['psql', 'sqlite3', 'mysql', 'redis-cli', 'mongosh'].includes(command)) return line('Looking at the database');
+  if (command === 'docker' || command === 'podman') {
+    if (['ps', 'logs', 'images', 'inspect'].includes(sub)) return line("Checking the app's containers");
+    if (sub === 'compose' && ['up', 'start'].includes(third)) return line("Starting the app's services", 'action');
+    if (sub === 'compose' && ['down', 'stop'].includes(third)) return line("Stopping the app's services", 'action');
+    return line("Managing the app's containers", 'action');
+  }
+  if (command === 'kubectl') return line(sub === 'get' || sub === 'describe' || sub === 'logs' ? "Checking the app's servers" : "Changing the app's servers", sub === 'get' ? 'read' : 'action');
+  if (command === 'terraform') return line(sub === 'plan' ? 'Planning changes to the servers' : 'Changing the servers', sub === 'plan' ? 'read' : 'action');
+  if (command === 'gh') return line(['list', 'view', 'status', 'diff', 'checks'].includes(third) ? 'Checking the project on GitHub' : 'Updating the project on GitHub', ['list', 'view', 'status', 'diff', 'checks'].includes(third) ? 'read' : 'action');
+  if (PACKAGE_MANAGERS.has(command)) {
+    const task = sub === 'run' ? third : sub;
+    if (NPM_TASKS[task] !== undefined) return line(NPM_TASKS[task] ?? '', 'action');
+    if (sub === 'outdated') return line('Checking for newer versions of its building blocks');
+    if (sub === 'ls' || sub === 'list' || sub === 'why') return line('Checking which building blocks are installed');
+    if (sub === 'run' && third !== '') return line(`Running the project's '${third}' task`, 'action');
+  }
+  if (['npx', 'pnpx', 'bunx'].includes(command) || (['pnpm', 'yarn', 'bun'].includes(command) && ['dlx', 'exec', 'x'].includes(sub))) {
+    const tool = command.endsWith('x') && command !== 'npx' ? sub : ['dlx', 'exec', 'x'].includes(sub) ? third : sub;
+    const name = tool.replace(/(.)@[^/]*$/, '$1');
+    return line(HELPER_TOOLS[name] ?? `Running a helper tool (${name})`, 'action');
+  }
+  if ((command === 'go' || command === 'cargo') && sub === 'run') return line('Starting the program', 'action');
+  if ((command === 'go' && sub === 'mod') || (command === 'cargo' && sub === 'update')) return line("Tidying the project's building blocks", 'action');
+  if ((command === 'cargo' && sub === 'fmt') || command === 'gofmt' || (command === 'go' && sub === 'fmt')) return line("Tidying the code's layout", 'action');
+  if (PYTHONS.has(command) && sub === '-m' && third === 'venv') return line('Setting up a separate Python workspace', 'action');
+  if (PYTHONS.has(command) && sub === '-m' && third !== '') return line(`Running a Python tool (${third})`, 'action');
+  if (['node', 'deno', 'bun', 'ruby', 'perl', 'php', 'python', 'python3'].includes(command)) {
+    if (['-e', '-c', '--eval', '-p'].includes(sub)) return line('Running a quick snippet of code', 'action');
+    if (args.includes('-')) return line('Running a quick snippet of code', 'action');
+    const file = args.find((a) => !a.startsWith('-') && a !== 'run');
+    if (file !== undefined) return line(`Running a script (${scriptName(file)})`, 'action');
+  }
+  if ((command === 'sh' || command === 'bash' || command === 'zsh') && sub !== '' && !sub.startsWith('-')) return line(`Running a script (${scriptName(sub)})`, 'action');
+  if (command.startsWith('./') || /\.(sh|py|js|rb)$/.test(command)) return line(`Running a script (${scriptName(command)})`, 'action');
+  return null;
+}
+
 function classifySegment(segment: string, level: Level): SegLine {
-  const argv = tokenize(segment);
+  const argv = normalizeArgv(tokenize(segment));
   const command = argv[0] ?? '';
   const subcommand = argv[1] ?? '';
   const kind = kindOfSegment(argv);
@@ -360,6 +512,15 @@ function classifySegment(segment: string, level: Level): SegLine {
       };
     }
     if (command === 'git') return gitLine(argv, level);
+    if (level === 'plain') {
+      if (command === 'echo') {
+        return line(argv.slice(1).some((a) => a.startsWith('$')) ? "Checking the computer's settings" : 'Showing a message');
+      }
+      if (command === 'pwd') return line('Checking which folder it is working in');
+      if (command === 'which') return line('Checking where something is on the computer');
+      if (command === 'wc') return line('Counting what is in a file');
+      if (command === 'tail' && argv.includes('-f')) return line('Watching a log as it grows');
+    }
     return {
       glyph: '→',
       id: 'bash.read',
@@ -421,6 +582,11 @@ function classifySegment(segment: string, level: Level): SegLine {
     };
   }
 
+  const more = moreLine(argv);
+  if (more !== null) return more;
+  if (['for', 'while', 'until'].includes(command)) {
+    return { ...line('Repeating a step', 'read', 'bash.flow') };
+  }
   return genericLine(segment, level);
 }
 
@@ -575,7 +741,7 @@ export function translateBash(
 
   // Moving to a folder or setting a variable is not a step anyone asked for:
   // `cd app && npm test` is a test run, not "+1 more step".
-  const all = splitSegments(command);
+  const all = splitSegments(stripHeredocs(command).command);
   const steps = all.filter(
     (segment) => !NAVIGATION.has(tokenize(segment)[0] ?? ''),
   );
@@ -586,7 +752,9 @@ export function translateBash(
   const actions = classified.filter((segment) => segment.tier === 'action');
   // Filler (a pause, staging before a commit, an unknown script) never names
   // a chain when a step that says what the chain is for comes later.
-  const meaningful = actions.filter((segment) => segment.id !== 'bash.generic');
+  const meaningful = actions.filter(
+    (segment) => segment.id !== 'bash.generic' && segment.id !== 'bash.git.add',
+  );
   const picked =
     meaningful[0] ??
     actions[0] ??

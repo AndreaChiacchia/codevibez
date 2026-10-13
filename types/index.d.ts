@@ -12,8 +12,10 @@ export type StoryLine = {
 export type Chapter = {
   prompt: string
   lines: StoryLine[]
-  /** Routine lines past the chapter's room, counted exactly. */
+  /** Lines past the chapter's room, counted exactly. */
   more: number
+  /** How many of those were failures or destructive steps. */
+  serious?: number
 }
 
 declare module 'claude-code' {

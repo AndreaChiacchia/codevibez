@@ -21,11 +21,13 @@ function lastChapter(story: readonly Chapter[]): Chapter[] {
 }
 
 const ALWAYS_KEPT: ReadonlySet<StoryLine['tone']> = new Set(['failure', 'danger']);
+const MAX_SERIOUS = 300;
 
 /**
  * Adds lines to the newest chapter. Past the chapter's room, routine lines
- * are counted exactly instead of kept; a failure, a destructive step and the
- * turn's summary are always kept.
+ * are counted exactly instead of kept. Failures and destructive steps get 300
+ * more lines of room, then are counted exactly too, so a long session cannot
+ * grow the story without bound; the turn's summary is always kept.
  */
 export function addLines(
   story: readonly Chapter[],
@@ -39,11 +41,16 @@ export function addLines(
   if (chapter === undefined) return next;
   const kept = [...chapter.lines];
   let more = chapter.more;
+  let serious = chapter.serious ?? 0;
   for (const line of lines) {
-    if (isSummary || ALWAYS_KEPT.has(line.tone) || kept.length < MAX_LINES) kept.push(line);
-    else more += 1;
+    const isSerious = ALWAYS_KEPT.has(line.tone);
+    if (isSummary || kept.length < MAX_LINES || (isSerious && kept.length < MAX_LINES + MAX_SERIOUS)) kept.push(line);
+    else {
+      more += 1;
+      if (isSerious) serious += 1;
+    }
   }
-  next[index] = { ...chapter, lines: kept, more };
+  next[index] = { ...chapter, lines: kept, more, ...(serious > 0 ? { serious } : {}) };
   return next;
 }
 
@@ -101,7 +108,10 @@ export function storyRows(story: readonly Chapter[]): StoryRow[] {
     if (chapter.more > 0) {
       rows.push({
         kind: 'note',
-        text: `and ${chapter.more} more routine ${chapter.more === 1 ? 'line' : 'lines'} not shown here`,
+        text:
+          (chapter.serious ?? 0) > 0
+            ? `and ${chapter.more} more ${chapter.more === 1 ? 'line' : 'lines'} not shown here, ${chapter.serious} of them failures or destructive steps`
+            : `and ${chapter.more} more routine ${chapter.more === 1 ? 'line' : 'lines'} not shown here`,
       });
     }
   }

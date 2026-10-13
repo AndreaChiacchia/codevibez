@@ -100,14 +100,14 @@ const cases: Case[] = [
     './scripts/gen-fixtures.sh --all --clean',
     'plain',
     '→',
-    "Running one of the project's own tools",
+    'Running a script (gen-fixtures.sh)',
     'action',
   ],
   [
     './scripts/gen-fixtures.sh --all --clean',
     'developer',
     '→',
-    'Running a project script (gen-fixtures) (+2 options)',
+    'Running a script (gen-fixtures.sh)',
     'action',
   ],
 ];
@@ -125,9 +125,8 @@ describe('translateBash golden table', () => {
   }
 
   it('marks unknown commands as generic', () => {
-    expect(translateBash('./scripts/gen-fixtures.sh', 'plain').generic).toBe(
-      true,
-    );
+    expect(translateBash('qq-tool --x', 'plain').generic).toBe(true);
+    expect(translateBash('./scripts/gen-fixtures.sh', 'plain').generic).toBeUndefined();
     expect(translateBash('npm test', 'plain').generic).toBeUndefined();
   });
 

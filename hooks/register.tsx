@@ -18,6 +18,7 @@ import { addLines, fitNewest, linesOf, startChapter, storyRows } from './story.t
 const VIEW = { plugin: 'codevibez', key: 'view' } as const
 const STORY = { plugin: 'codevibez', key: 'story' } as const
 const MEMO_LIMIT = 500
+const STORY_SAVE_MS = 1000
 
 const ENGLISH_ON =
   "English view is on. Type /codevibez to see Claude Code's own rows."
@@ -59,12 +60,10 @@ function signature(input: unknown): string {
     const value = input[name]
     return typeof value === 'string' ? value : ''
   }
-  let length = -1
-  try {
-    length = JSON.stringify(input).length
-  } catch {
-    length = -1
-  }
+  // String lengths, not JSON: a Write carries the whole file, and stringifying
+  // a large one on every draw costs milliseconds.
+  let length = 0
+  for (const value of Object.values(input)) length += typeof value === 'string' ? value.length : 1
   return [Object.keys(input).length, length, field('command'), field('description'), field('file_path')].join('|')
 }
 
@@ -111,6 +110,17 @@ export const register: Register = on => {
   // Narration state lives in memory for the session and is never written down.
   let ledger = createLedger()
   let story: Chapter[] = []
+  // The story reaches the session's state only once its pane has been opened,
+  // and then at most once a second while a turn runs, and at the turn's end.
+  let storyShown = false
+  let lastSave = 0
+  const storyDue = (force: boolean): boolean => {
+    if (!storyShown) return false
+    const now = Date.now()
+    if (!force && now - lastSave < STORY_SAVE_MS) return false
+    lastSave = now
+    return true
+  }
   const memo = new Map<string, Narration>()
   // Whether each call's row was drawn in English, so its result block below
   // follows the same choice.
@@ -159,6 +169,9 @@ export const register: Register = on => {
   on('command.run', { command: 'codevibez' }, async ($, e) => {
     const asked = e.args.trim().toLowerCase()
     if (asked === 'story') {
+      storyShown = true
+      lastSave = Date.now()
+      saveStory($, story)
       const opened = await $.ui.open({ id: 'codevibez-story', title: 'The story so far', focus: true, closeOnEscape: true })
       return {
         text: opened.isPlaced
@@ -270,7 +283,7 @@ export const register: Register = on => {
     try {
       if (e.text.trim() !== '') {
         story = startChapter(story, e.text)
-        saveStory($, story)
+        if (storyDue(false)) saveStory($, story)
       }
     } catch {
       // The story missing a chapter never holds up a prompt.
@@ -305,7 +318,7 @@ export const register: Register = on => {
         })
         if (narration !== null) {
           story = addLines(story, linesOf(narration))
-          saveStory($, story)
+          if (storyDue(false)) saveStory($, story)
         }
       }
     } catch {
@@ -322,8 +335,8 @@ export const register: Register = on => {
       if (summary !== null) {
         if ((await currentView($)) === 'english') $.ui.log(`${summary.glyph} ${summary.text}`)
         story = addLines(story, [summary], true)
-        saveStory($, story)
       }
+      if (storyDue(true)) saveStory($, story)
     } catch {
       // No summary line is better than a turn that cannot end.
     }

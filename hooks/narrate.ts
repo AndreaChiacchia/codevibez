@@ -244,9 +244,54 @@ function describeAction(view: CallView): Sentence | null {
     case 'Monitor':
       return sentence('→', 'Keeping an eye on something in the background', 'info');
 
+    case 'SendMessage':
+      return sentence('→', 'Sending a message to a helper', 'info');
+    case 'ScheduleWakeup':
+      return sentence('→', 'Setting a reminder to check back later', 'info');
+    case 'CronCreate':
+      return sentence('→', 'Scheduling a job to repeat', 'info');
+    case 'CronDelete':
+      return sentence('→', 'Cancelling a scheduled job', 'info');
+    case 'CronList':
+      return sentence('→', 'Checking its scheduled jobs', 'read');
+    case 'EnterWorktree':
+      return sentence('→', 'Starting work in a separate copy of the project', 'info');
+    case 'ExitWorktree':
+      return input.action === 'remove'
+        ? sentence('⚠', input.discard_changes === true
+            ? 'Removing the separate copy of the project and throwing away its unsaved edits'
+            : 'Removing the separate copy of the project', 'danger')
+        : sentence('→', 'Leaving the separate copy of the project', 'info');
+    case 'Workflow':
+      return sentence('→', 'Running a planned set of helper steps', 'info');
+    case 'ListMcpResourcesTool':
+    case 'ReadMcpResourceDirTool':
+      return sentence('→', 'Looking at what a connected service offers', 'read');
+    case 'ReadMcpResourceTool':
+      return sentence('→', 'Reading from a connected service', 'read');
+    case 'PushNotification':
+      return sentence('→', 'Sending you a notification', 'info');
+    case 'SendUserMessage':
+      return sentence('→', 'Sending you a message', 'info');
+    case 'SendUserFile':
+    case 'SendFile':
+      return sentence('→', 'Sending you a file', 'info');
+    case 'ListAgents':
+      return sentence('→', 'Checking which helpers are running', 'read');
+    case 'memory_read':
+    case 'memory_list':
+      return sentence('→', 'Looking at its saved notes', 'read');
+    case 'memory_write':
+      return sentence('✎', 'Saving a note for later', 'info');
+
     default: {
       const mcp = serviceOf(tool);
-      if (mcp === null) return null;
+      if (mcp === null) {
+        // Any other tool still gets a plain line; its exact name is kept.
+        return /^[A-Za-z][\w-]*$/.test(tool)
+          ? sentence('→', `Using one of Claude Code's tools (${tool.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_+/g, ' ').trim().toLowerCase()})`, 'info')
+          : null;
+      }
       return sentence(
         '→',
         `Using the connected service "${mcp.service}" (${mcp.action})`,
@@ -260,7 +305,10 @@ const KNOWN_TOOLS = new Set([
   'Bash', 'Read', 'Edit', 'MultiEdit', 'Grep', 'Glob', 'Write', 'NotebookEdit',
   'WebFetch', 'WebSearch', 'Agent', 'Task', 'TodoWrite', 'TaskCreate', 'TaskUpdate',
   'TaskList', 'TaskGet', 'TaskStop', 'Skill', 'ToolSearch', 'AskUserQuestion',
-  'EnterPlanMode', 'ExitPlanMode', 'LSP', 'Monitor',
+  'EnterPlanMode', 'ExitPlanMode', 'LSP', 'Monitor', 'SendMessage', 'ScheduleWakeup',
+  'CronCreate', 'CronDelete', 'CronList', 'EnterWorktree', 'ExitWorktree', 'Workflow',
+  'ListMcpResourcesTool', 'ReadMcpResourceDirTool', 'ReadMcpResourceTool', 'PushNotification',
+  'SendUserMessage', 'SendUserFile', 'SendFile', 'ListAgents', 'memory_read', 'memory_list', 'memory_write',
 ]);
 
 /** Whether this mod has English for the tool at all, judged by name alone. */
@@ -465,7 +513,11 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
     other > 0 ? counted(other, 'other step') : '',
   ].filter((part) => part !== '');
   const stem =
-    todos === described.length ? 'Updating its to-do list' : 'Getting familiar with your code';
+    todos === described.length
+      ? 'Updating its to-do list'
+      : commands === described.length
+        ? 'Looking around the project'
+        : 'Getting familiar with your code';
 
   const lines: Narration[] = [
     { action: sentence('→', `${stem} (${parts.join(', ')})`, 'read') },
