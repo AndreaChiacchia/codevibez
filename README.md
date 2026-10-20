@@ -2,6 +2,8 @@
 
 ![Pretending to read code vs Reading 'code'](codevibez.jpg)
 
+https://github.com/user-attachments/assets/e5145395-1287-4397-814b-cb42ea9760c7
+
 **A simple idea: make natural language the next coding language (everywhere).**
 
 codevibez replaces Claude Code's raw tool-call rows with plain English.
