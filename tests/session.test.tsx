@@ -147,6 +147,23 @@ describe('turn summary', () => {
     expect(logs).toEqual(['⚠ This turn: ran 3 commands, the checks passed, 1 destructive step.'])
   })
 
+  test('steps a hook stopped are counted as not run, never as failures', async ($, on) => {
+    const logs = engineTurns(on)
+    const exit2 = 'PreToolUse:Bash hook error: [/scratch/block.sh]: Blocked by the test hook (exit 2)\n'
+    const deny = 'PreToolUse:Bash hook error: Blocked by the test hook (JSON deny)'
+    on('tool.call', (_$, e) => {
+      if (e.tool === 'Bash' && e.command === 'echo one') return { isError: true, result: `Error: ${exit2}`, text: exit2 }
+      if (e.tool === 'Bash' && e.command === 'echo two') return { isError: true, result: `Error: ${deny}`, text: deny }
+      return { result: ok('') }
+    })
+    await startTurn($, 'try these')
+    await $.tool.call({ tool: 'Bash', command: 'echo one' })
+    await $.tool.call({ tool: 'Bash', command: 'echo two' })
+    await $.tool.call({ tool: 'Bash', command: 'ls' })
+    await endTurn($)
+    expect(logs).toEqual(['● This turn: ran 1 command, a hook blocked 2 steps.'])
+  })
+
   test('says nothing when nothing changed and nothing ran', async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: {} }))

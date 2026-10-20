@@ -2,7 +2,7 @@ import { detectDanger } from '../engine/src/bash.ts';
 import { isTestCommand } from '../engine/src/rules/bash-rules.ts';
 import { parseTestCounts } from '../engine/src/rules/outcome-rules.ts';
 import { counted, plural } from '../engine/src/words.ts';
-import { isDeclined } from './narrate.ts';
+import { isDeclined, isHookBlocked } from './narrate.ts';
 
 /**
  * What one turn changed, kept in memory only and counted exactly, so the line
@@ -16,6 +16,7 @@ export type Ledger = {
   failedCommands: number;
   failedSteps: number;
   declined: number;
+  hookBlocked: number;
   destructive: number;
   tests: TestRun | null;
 };
@@ -44,6 +45,7 @@ export function createLedger(): Ledger {
     failedCommands: 0,
     failedSteps: 0,
     declined: 0,
+    hookBlocked: 0,
     destructive: 0,
     tests: null,
   };
@@ -71,6 +73,11 @@ export function observe(ledger: Ledger, call: FinishedCall): void {
   // A step the person said no to never ran: not a command, not a failure.
   if (call.isError && isDeclined(call.text || (typeof result === 'string' ? result : ''))) {
     ledger.declined += 1;
+    return;
+  }
+  // A step a settings hook stopped never ran either.
+  if (call.isError && isHookBlocked(call.text || (typeof result === 'string' ? result : ''))) {
+    ledger.hookBlocked += 1;
     return;
   }
 
@@ -164,6 +171,9 @@ export function summarize(ledger: Ledger): Summary | null {
   }
   if (ledger.declined > 0) {
     parts.push(`you said no to ${counted(ledger.declined, 'step')}`);
+  }
+  if (ledger.hookBlocked > 0) {
+    parts.push(`a hook blocked ${counted(ledger.hookBlocked, 'step')}`);
   }
   if (parts.length === 0) return null;
 

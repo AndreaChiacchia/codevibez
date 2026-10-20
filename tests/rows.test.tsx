@@ -451,6 +451,58 @@ describe('0.2.3: shell writes read like the Write tool', () => {
   })
 })
 
+describe('0.2.3: a call a hook stopped reads as not run', () => {
+  // The exact texts Claude Code 2.1.304 gave a live session for each form.
+  const EXIT_2 = 'Error: PreToolUse:Bash hook error: [/scratch/block.sh]: Blocked by the test hook (exit 2)\n'
+  const JSON_DENY = 'Error: PreToolUse:Bash hook error: Blocked by the test hook (JSON deny)'
+
+  test('both hook-block forms say the step did not run, never that it failed', async ($, on) => {
+    engineRows(on)
+    const cases = [
+      row('Bash', bash('echo marker'), { isErrored: true, output: EXIT_2 }),
+      row('Bash', bash('echo marker'), { isErrored: true, output: JSON_DENY }),
+      row('Bash', bash('for f in *.log; do gzip "$f"; done'), { isErrored: true, output: EXIT_2 }),
+    ]
+    for (const surface of SURFACES) {
+      for (const props of cases) {
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+        const lines = await ui.findAll({ type: 'Text' })
+        expect(lines[1]?.text).toBe('✗ Not run: a hook blocked it')
+        expect((lines[1]?.props as { color?: string } | undefined)?.color).not.toBe('error')
+        expect(lines.map((found) => found.text).join('\n').includes('failure')).toBe(false)
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('a collapsed group counts a hook-blocked step as not run', async ($, on) => {
+    engineRows(on)
+    const calls = [row('Read', { file_path: '/repo/a.ts' }), row('Bash', bash('ls -la'), { isErrored: true, output: JSON_DENY })]
+    const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
+    const shown = (await ui.findAll({ type: 'Text' })).map((found) => found.text)
+    expect(shown).toContain('✗ Not run: a hook blocked 1 step')
+    expect(shown.join('\n').includes('failed')).toBe(false)
+  })
+
+  test('a step that ran and failed stays a failure, whatever its output mentions', async ($, on) => {
+    engineRows(on)
+    const cases = [
+      row('Bash', bash('npm test'), {
+        isErrored: true,
+        output: 'Exit code 1\n FAIL hooks.test.ts\n   expected "PreToolUse:Bash hook error: x"\n      Tests  1 failed | 4 passed (5)',
+      }),
+      row('Bash', bash('curl -f https://example.com'), { isErrored: true, output: 'Exit code 22\nthe request was rejected by the server' }),
+    ]
+    for (const props of cases) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolUse', props })
+      const outcome = (await ui.findAll({ type: 'Text' }))[1]
+      expect(outcome?.text.startsWith('✗ Not run')).toBe(false)
+      expect((outcome?.props as { color?: string } | undefined)?.color).toBe('error')
+      await ui.unmount()
+    }
+  })
+})
+
 describe('leaves what it cannot read to Claude Code', () => {
   test('any other tool gets a plain line that keeps its name', async ($, on) => {
     engineRows(on)

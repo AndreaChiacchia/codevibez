@@ -447,23 +447,46 @@ function describeSuccess(view: CallView): Sentence | undefined {
   return undefined;
 }
 
+const DECLINED = /^(?:Error:\s*)?(?:The user doesn't want to proceed|User rejected)|tool use was rejected/i;
+
+/**
+ * The first line of what came back. Claude Code's own notices start there, so
+ * a failing step whose output merely mentions one is still a failure.
+ */
+function firstLine(text: string): string {
+  return text.trimStart().split('\n', 1)[0] ?? '';
+}
+
+/** Whether the person said no to the call at a permission prompt. */
+export function isDeclined(text: string): boolean {
+  return DECLINED.test(firstLine(text));
+}
+
+// What Claude Code reports when a PreToolUse hook stops a call, whether the
+// hook exits 2 or answers with a JSON deny: `PreToolUse:Bash hook error: …`.
+const HOOK_BLOCKED = /^(?:Error:\s*)?PreToolUse(?::[\w-]+)? hook error:/;
+
+/** Whether a settings hook stopped the call before it ran. */
+export function isHookBlocked(text: string): boolean {
+  return HOOK_BLOCKED.test(firstLine(text));
+}
+
+const NOT_RUN_DECLINED = 'Not run: you said no';
+const NOT_RUN_HOOK = 'Not run: a hook blocked it';
+
 /**
  * The English for one call, or null when this mod does not know the tool or
  * the row's shape, so Claude Code draws its own row.
  */
-const DECLINED = /doesn't want to proceed|user rejected|was rejected/i;
-
-/** Whether the person said no to the call at a permission prompt. */
-export function isDeclined(text: string): boolean {
-  return DECLINED.test(text);
-}
-
 export function describeCall(view: CallView): Narration | null {
   const action = describeAction(view);
   if (action === null) return null;
   if (view.isRunning) return { action };
   if ((view.isErrored || view.isInterrupted) && isDeclined(errorText(view.output))) {
-    return { action, outcome: sentence('✗', 'Not run: you said no', 'stopped') };
+    return { action, outcome: sentence('✗', NOT_RUN_DECLINED, 'stopped') };
+  }
+  if ((view.isErrored || view.isInterrupted) && isHookBlocked(errorText(view.output))) {
+    return { action, outcome: sentence('✗', NOT_RUN_HOOK, 'stopped') };
   }
   if (view.isInterrupted) {
     return { action, outcome: sentence('■', 'Stopped before it finished', 'stopped') };
@@ -551,16 +574,19 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
       ),
     });
   }
-  const declined = described.filter(
-    (item) => item.narration?.outcome?.text === 'Not run: you said no',
-  ).length;
+  const declined = described.filter((item) => item.narration?.outcome?.text === NOT_RUN_DECLINED).length;
   if (declined > 0) {
     lines.push({ action: sentence('✗', `Not run: you said no to ${counted(declined, 'step')}`, 'stopped') });
+  }
+  const hooked = described.filter((item) => item.narration?.outcome?.text === NOT_RUN_HOOK).length;
+  if (hooked > 0) {
+    lines.push({ action: sentence('✗', `Not run: a hook blocked ${counted(hooked, 'step')}`, 'stopped') });
   }
   const stopped = described.filter(
     (item) =>
       item.narration?.outcome?.tone === 'stopped' &&
-      item.narration.outcome.text !== 'Not run: you said no',
+      item.narration.outcome.text !== NOT_RUN_DECLINED &&
+      item.narration.outcome.text !== NOT_RUN_HOOK,
   ).length;
   if (stopped > 0) {
     lines.push({
