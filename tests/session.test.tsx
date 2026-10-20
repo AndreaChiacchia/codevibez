@@ -136,6 +136,17 @@ describe('turn summary', () => {
     expect(logs).toEqual(['⚠ This turn: ran 1 command, 1 destructive step, you said no to 1 step.'])
   })
 
+  test('shell writes are not counted as destructive steps; emptying a file is', async ($, on) => {
+    const logs = engineTurns(on)
+    on('tool.call', () => ({ result: ok('') }))
+    await startTurn($, 'write some files')
+    await $.tool.call({ tool: 'Bash', command: "cat > notes.md <<'EOF'\nhello\nEOF" })
+    await $.tool.call({ tool: 'Bash', command: 'npm test > test.log 2>&1' })
+    await $.tool.call({ tool: 'Bash', command: ': > old.txt' })
+    await endTurn($)
+    expect(logs).toEqual(['⚠ This turn: ran 3 commands, the checks passed, 1 destructive step.'])
+  })
+
   test('says nothing when nothing changed and nothing ran', async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: {} }))

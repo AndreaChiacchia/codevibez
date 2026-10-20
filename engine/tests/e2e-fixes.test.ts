@@ -26,9 +26,9 @@ describe('chains and overwrites', () => {
     expect(translateBash('cd /tmp/project', 'plain').text).not.toBe('');
   });
 
-  it('never claims an overwritten file had contents it may not have had', () => {
-    const line = translateBash('mkdir -p build && echo bundle > build/app.js', 'plain');
-    expect(line.severity).toBe('danger');
-    expect(line.text).toBe("Writing over 'build/app.js'; anything already in it is lost");
+  it('never claims a written file had contents it may not have had', () => {
+    // 0.2.3: writing a file from the shell is a write, true whether or not the file existed.
+    expect(translateBash('echo bundle > build/app.js', 'plain').text).toBe('Writing a file (app.js)');
+    expect(translateBash('mkdir -p build && echo bundle > build/app.js', 'plain').severity).toBe('info');
   });
 });

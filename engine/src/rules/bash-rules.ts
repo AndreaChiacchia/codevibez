@@ -1,4 +1,14 @@
-import { detectDanger, splitSegments, stripHeredocs, tokenize } from '../bash.ts';
+import {
+  detectDanger,
+  isNullSink,
+  scanCommand,
+  splitPipelines,
+  splitSegments,
+  stripComment,
+  stripHeredocs,
+  tokenize,
+  truncatesToNothing,
+} from '../bash.ts';
 import { counted, plural } from '../words.ts';
 import type { Level, Line } from '../types.ts';
 
@@ -664,6 +674,13 @@ function dangerLine(
       level === 'plain'
         ? 'Replacing the shared online copy of this work; older versions there are lost'
         : `Overwriting the online history (${danger.target})`;
+  } else if (danger.reason === 'empty') {
+    stem = level === 'plain' ? `Emptying '${danger.target}'` : `Emptying ${danger.target}`;
+  } else if (danger.reason === 'empty-read') {
+    stem =
+      level === 'plain'
+        ? `Emptying '${danger.target}' before it is read, so what was in it is lost`
+        : `Emptying ${danger.target} before it is read`;
   } else if (danger.reason === 'overwrite') {
     stem =
       level === 'plain'
@@ -741,14 +758,13 @@ export function translateBash(
 
   // Moving to a folder or setting a variable is not a step anyone asked for:
   // `cd app && npm test` is a test run, not "+1 more step".
-  const all = splitSegments(stripHeredocs(command).command);
-  const steps = all.filter(
-    (segment) => !NAVIGATION.has(tokenize(segment)[0] ?? ''),
-  );
-  const segments = steps.length > 0 ? steps : all;
-  const classified = segments.map((segment) =>
-    classifySegment(segment, level),
-  );
+  const stages: Array<{ text: string; piped: boolean }> = [];
+  for (const pipeline of splitPipelines(stripHeredocs(command).command)) {
+    splitSegments(stripComment(pipeline)).forEach((text, index) => stages.push({ text, piped: index > 0 }));
+  }
+  const steps = stages.filter((stage) => !NAVIGATION.has(tokenize(stage.text)[0] ?? ''));
+  const chosen = steps.length > 0 ? steps : stages;
+  const { lines: classified, savedTo } = classifyStages(chosen, level);
   const actions = classified.filter((segment) => segment.tier === 'action');
   // Filler (a pause, staging before a commit, an unknown script) never names
   // a chain when a step that says what the chain is for comes later.
@@ -765,14 +781,84 @@ export function translateBash(
     extraCount === 0
       ? picked.facts
       : `(+${extraCount} more ${plural(extraCount, 'step')})`;
+  // Output sent to a file is a short fact on the step that made it.
+  const saved = facts === undefined && savedTo !== undefined ? `(${savedTo})` : facts;
   return asLine(
     command,
     {
       ...picked,
-      ...(facts === undefined ? {} : { facts }),
+      ...(saved === undefined ? {} : { facts: saved }),
     },
     actions.length === 0 ? picked.tier : 'action',
   );
+}
+
+const CONTENT_COMMANDS = new Set(['cat', 'echo', 'printf']);
+
+function fileName(target: string): string | undefined {
+  const clean = target.replace(/^["']|["']$/g, '');
+  if (clean === '' || /[$`]/.test(clean)) return undefined;
+  return clean.split('/').filter(Boolean).pop();
+}
+
+function writeLine(target: string, kind: 'write' | 'append' | 'empty'): SegLine {
+  const name = fileName(target);
+  const stem =
+    kind === 'append' ? 'Adding to a file' : kind === 'empty' ? 'Emptying a file' : 'Writing a file';
+  return { glyph: '✎', id: 'bash.write', tier: 'action', stem, ...(name === undefined ? {} : { facts: `(${name})` }) };
+}
+
+/**
+ * Classifies each step, reading shell writes the way the Write tool's rows
+ * read: `cat > f <<EOF`, `echo … > f` and `tee f` write a file (never "showing"
+ * one), and any other command whose output goes to a file stays that command.
+ * Whether the file existed before is never claimed either way.
+ */
+function classifyStages(
+  stages: ReadonlyArray<{ text: string; piped: boolean }>,
+  level: Level,
+): { lines: SegLine[]; savedTo?: string } {
+  const lines: SegLine[] = [];
+  let savedTo: string | undefined;
+  let producerIsContent = false;
+  for (const stage of stages) {
+    const scan = scanCommand(stage.text);
+    const words = normalizeArgv(tokenize(scan.stripped));
+    const output = scan.redirects.find((redirect) => redirect.fd === '1' || redirect.fd === '&');
+    const errors = scan.redirects.find((redirect) => redirect.fd === '2');
+    const first = words[0] ?? '';
+    const writesNothing = words.length === 0 || first === ':' || first === 'true' || (first === 'cat' && words[1] === '/dev/null');
+    const isContent = writesNothing || CONTENT_COMMANDS.has(first);
+    if (!stage.piped) producerIsContent = isContent;
+    if (first === 'tee') {
+      const target = words.slice(1).find((word) => !word.startsWith('-') && !isNullSink(word));
+      // `tee /dev/stderr` only passes the output along; it is not a step.
+      if (target === undefined) continue;
+      if (!stage.piped || producerIsContent) {
+        // `tee f <<EOF`, `echo … | tee f`: the file is the point of the step.
+        if (stage.piped && lines.length > 0) lines.pop();
+        const append = words.some((word) => word === '--append' || /^-[a-z]*a/.test(word));
+        lines.push(writeLine(target, append ? 'append' : 'write'));
+      } else {
+        savedTo ??= `output saved to ${fileName(target) ?? 'a file'}`;
+      }
+      continue;
+    }
+    if (first === 'truncate' && truncatesToNothing(words)) {
+      // A named file being emptied is a danger line already; a scratch one is routine.
+      lines.push(writeLine(words[words.length - 1] ?? '', 'empty'));
+      continue;
+    }
+    if (output !== undefined && isContent) {
+      const kind = writesNothing ? 'empty' : output.append ? 'append' : 'write';
+      lines.push(writeLine(output.target, kind));
+      continue;
+    }
+    if (output !== undefined) savedTo ??= `output saved to ${fileName(output.target) ?? 'a file'}`;
+    else if (errors !== undefined) savedTo ??= `errors saved to ${fileName(errors.target) ?? 'a file'}`;
+    lines.push(classifySegment(stage.text, level));
+  }
+  return savedTo === undefined ? { lines } : { lines, savedTo };
 }
 
 function hasKind(command: string, expected: SegmentKind): boolean {

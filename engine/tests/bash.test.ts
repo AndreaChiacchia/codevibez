@@ -202,12 +202,14 @@ describe('detectDanger', () => {
       reason: 'discard-worktree',
       target: '.',
     });
-    expect(detectDanger('echo x > important-file')).toEqual({
-      reason: 'overwrite',
+    // Writing a file is not a loss by itself; emptying a named one is.
+    expect(detectDanger('echo x > important-file')).toBeNull();
+    expect(detectDanger(': > important-file')).toEqual({
+      reason: 'empty',
       target: 'important-file',
     });
     expect(detectDanger('truncate -s 0 important-file')).toEqual({
-      reason: 'overwrite',
+      reason: 'empty',
       target: 'important-file',
     });
     expect(detectDanger('dd if=/tmp/input of=/dev/disk4')).toEqual({
@@ -310,9 +312,10 @@ describe('detectDanger, cases found by adversarial review', () => {
   });
 
   it('recognises the forced clobber operator', () => {
-    expect(detectDanger('echo hi >| out.txt')).toMatchObject({
-      reason: 'overwrite',
+    expect(detectDanger(': >| out.txt')).toMatchObject({
+      reason: 'empty',
       target: 'out.txt',
     });
+    expect(detectDanger('echo hi >| out.txt')).toBeNull();
   });
 });

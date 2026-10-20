@@ -51,6 +51,12 @@ export function splitSegments(command: string): string[] {
       continue;
     }
 
+    // `2>&1`, `>&2` and `&>` are redirections, not a command sent to the background.
+    if (character === '&' && (command.charAt(index - 1) === '>' || command.charAt(index - 1) === '<' || next === '>')) {
+      current += character;
+      continue;
+    }
+
     // `>|` is a single forced-clobber operator, so the pipe must not split it.
     if (character === '|' && command.charAt(index - 1) === '>') {
       current += character;
@@ -128,7 +134,9 @@ export interface DangerHit {
     | 'discard-worktree'
     | 'overwrite'
     | 'permissions'
-    | 'drop-data';
+    | 'drop-data'
+    | 'empty'
+    | 'empty-read';
   target: string;
   recursive?: boolean;
 }
@@ -146,6 +154,8 @@ const SEVERITY: Record<DangerHit['reason'], number> = {
   'overwrite-history': 5,
   'drop-data': 6,
   permissions: 2,
+  'empty-read': 2,
+  empty: 2,
   overwrite: 1,
 };
 
@@ -159,7 +169,6 @@ const KEYWORDS = new Set([
   'case', 'esac', 'in',
   '{', '}', '(', ')', '!', 'exec',
 ]);
-/** Writing here destroys nothing, so it must never register as an overwrite. */
 const PERMISSION_EXECUTABLES = new Set(['chmod', 'chown', 'chgrp']);
 const DATABASE_CLIENTS = new Set([
   'psql',
@@ -176,7 +185,271 @@ const DROP_SQL =
   /\b(?:drop\s+(table|database|schema|collection|view)|truncate(?:\s+table)?)\s+(?:if\s+exists\s+)?([A-Za-z0-9_."`$-]+)/i;
 const DROP_MONGO = /\b(?:db\.dropDatabase\(\)|\.drop\(\))/;
 
+/** Writing here destroys nothing, so it must never register as an overwrite. */
 const NULL_SINKS = /^\/dev\/(null|zero|stdout|stderr|tty|fd\/\d+)$/;
+
+/**
+ * Where scratch work goes: a temp folder, a path made by `mktemp`, or a file
+ * named by a shell variable. Emptying one of these is routine, not a loss
+ * worth stopping for. `$HOME`, `$PWD` and project paths are real files.
+ */
+const TEMP_ROOT = /^(?:~?\/?(?:private\/)?|\.\/|\.)tmp\/|^\/(?:private\/)?var\/folders\/|^\/dev\/shm\//;
+const VARIABLE_ROOT = /^\$\{?(?!(?:HOME|PWD|OLDPWD)\b)[A-Za-z_][A-Za-z0-9_]*\}?(?:\/|$)/;
+const MKTEMP = /^(?:\$\(|`)\s*mktemp\b/;
+
+export function isScratchTarget(target: string): boolean {
+  return TEMP_ROOT.test(target) || VARIABLE_ROOT.test(target) || MKTEMP.test(target);
+}
+
+/** `truncate -s 0 f`: the file is cut to nothing. Any other size keeps or pads it. */
+export function truncatesToNothing(argv: readonly string[]): boolean {
+  return argv.some(
+    (argument, index) =>
+      argument === '-s0' ||
+      argument === '--size=0' ||
+      ((argument === '-s' || argument === '--size') && argv[index + 1] === '0'),
+  );
+}
+
+export function isNullSink(target: string): boolean {
+  return NULL_SINKS.test(target);
+}
+
+export interface Redirect {
+  target: string;
+  append: boolean;
+  /** `1` for output, `2` for errors, `&` for both. */
+  fd: string;
+}
+
+export interface Scan {
+  /** Files the command's output or errors are sent to; never `2>&1` or a null sink. */
+  redirects: Redirect[];
+  /** Files fed to the command with `<`. */
+  inputs: string[];
+  /** The command with every redirection, its target and heredoc markers blanked out. */
+  stripped: string;
+}
+
+/** The index of the `)` that closes the `(` at `open`, or the last index. */
+function closingParen(text: string, open: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = open; index < text.length; index += 1) {
+    const character = text.charAt(index);
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") quote = character;
+    else if (character === '\\') index += 1;
+    else if (character === '(') depth += 1;
+    else if (character === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return text.length - 1;
+}
+
+function readWord(text: string, from: number): { value: string; end: number } {
+  let index = from;
+  while (index < text.length && (text.charAt(index) === ' ' || text.charAt(index) === '\t')) index += 1;
+  let value = '';
+  let quote: string | null = null;
+  for (; index < text.length; index += 1) {
+    const character = text.charAt(index);
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      else value += character;
+      continue;
+    }
+    if (character === '$' && text.charAt(index + 1) === '(') {
+      const close = closingParen(text, index + 1);
+      value += text.slice(index, close + 1);
+      index = close;
+      continue;
+    }
+    if (character === '`') {
+      const close = text.indexOf('`', index + 1);
+      const end = close < 0 ? text.length - 1 : close;
+      value += text.slice(index, end + 1);
+      index = end;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '\\' && index + 1 < text.length) {
+      value += text.charAt(index + 1);
+      index += 1;
+      continue;
+    }
+    if (/[\s;|&<>()]/.test(character)) break;
+    value += character;
+  }
+  return { value, end: index };
+}
+
+/** The file descriptor digits just before `index`, when they stand alone. */
+function fdBefore(text: string, index: number): { fd: string; start: number } | null {
+  let cursor = index - 1;
+  while (cursor >= 0 && /\d/.test(text.charAt(cursor))) cursor -= 1;
+  if (cursor === index - 1) return null;
+  if (cursor >= 0 && !/\s/.test(text.charAt(cursor))) return null;
+  return { fd: text.slice(cursor + 1, index), start: cursor + 1 };
+}
+
+/**
+ * Reads a segment's redirections from its raw text, so a quoted `">"`, an
+ * arithmetic `(( n > 5 ))` or a test `[[ a > b ]]` is never taken for one.
+ * What runs inside `$( )`, backticks or `<( )` is read as its own command.
+ */
+export function scanCommand(text: string): Scan {
+  const redirects: Redirect[] = [];
+  const inputs: string[] = [];
+  const out = text.split('');
+  const blank = (from: number, to: number): void => {
+    for (let cursor = from; cursor < to; cursor += 1) out[cursor] = ' ';
+  };
+  let quote: string | null = null;
+  let test = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text.charAt(index);
+    const next = text.charAt(index + 1);
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      else if (character === '\\' && quote === '"') index += 1;
+      continue;
+    }
+    if (character === '\\') {
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (next === '(' && ['$', '<', '>', '('].includes(character)) {
+      index = closingParen(text, index + 1);
+      continue;
+    }
+    if (character === '`') {
+      const close = text.indexOf('`', index + 1);
+      index = close < 0 ? text.length : close;
+      continue;
+    }
+    if (character === '[' && next === '[') {
+      test = true;
+      index += 1;
+      continue;
+    }
+    if (character === ']' && next === ']') {
+      test = false;
+      index += 1;
+      continue;
+    }
+    if (test) continue;
+    if (character === '>') {
+      let start = index;
+      let fd = '1';
+      if (text.charAt(index - 1) === '&') {
+        start = index - 1;
+        fd = '&';
+      } else {
+        const before = fdBefore(text, index);
+        if (before !== null) {
+          start = before.start;
+          fd = before.fd;
+        }
+      }
+      let operatorEnd = index + 1;
+      let append = false;
+      if (text.charAt(operatorEnd) === '>') {
+        append = true;
+        operatorEnd += 1;
+      } else if (text.charAt(operatorEnd) === '|') {
+        operatorEnd += 1;
+      }
+      if (text.charAt(operatorEnd) === '&') {
+        // `2>&1`, `>&2`: one stream joins another; no file is written.
+        const word = readWord(text, operatorEnd + 1);
+        blank(start, word.end);
+        index = word.end - 1;
+        continue;
+      }
+      const word = readWord(text, operatorEnd);
+      blank(start, word.end);
+      if (word.value !== '' && !NULL_SINKS.test(word.value)) redirects.push({ target: word.value, append, fd });
+      index = word.end - 1;
+      continue;
+    }
+    if (character === '<') {
+      if (next === '<') {
+        // `<<<` here-string or `<<EOF` heredoc marker: data, not a file.
+        let from = index + 2;
+        if (text.charAt(from) === '<' || text.charAt(from) === '-') from += 1;
+        const word = readWord(text, from);
+        blank(index, word.end);
+        index = word.end - 1;
+        continue;
+      }
+      const before = fdBefore(text, index);
+      const word = readWord(text, index + 1);
+      blank(before?.start ?? index, word.end);
+      if (word.value !== '') inputs.push(word.value);
+      index = word.end - 1;
+    }
+  }
+  return { redirects, inputs, stripped: out.join('') };
+}
+
+/** Split into pipelines: at `&&`, `||`, `;`, newlines and a lone `&`, never at a single `|`. */
+export function splitPipelines(command: string): string[] {
+  const pipelines: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command.charAt(index);
+    const next = command.charAt(index + 1);
+    const previous = command.charAt(index - 1);
+    if (character === '\\' && (next === '\n' || next === '\r')) {
+      index += next === '\r' && command.charAt(index + 2) === '\n' ? 2 : 1;
+      continue;
+    }
+    if (character === '\\' && [';', '|', '&'].includes(next)) {
+      current += `${character}${next}`;
+      index += 1;
+      continue;
+    }
+    if (quote !== null) {
+      current += character;
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if ((character === '&' && next === '&') || (character === '|' && next === '|')) {
+      pipelines.push(current);
+      current = '';
+      index += 1;
+      continue;
+    }
+    const redirectAmpersand = character === '&' && (previous === '>' || previous === '<' || next === '>');
+    if (character === ';' || character === '\n' || character === '\r' || (character === '&' && !redirectAmpersand)) {
+      pipelines.push(current);
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  pipelines.push(current);
+  return pipelines.map((pipeline) => pipeline.trim()).filter(Boolean);
+}
 
 function executableName(value: string): string {
   return value.split('/').pop() ?? value;
@@ -314,33 +587,6 @@ function deleteHit(argv: string[], executableIndex: number, fallbackTarget = 'fi
     target: targets.join(', ') || fallbackTarget,
     recursive,
   };
-}
-
-function redirectionTarget(segment: string): string | null {
-  let quote: '"' | "'" | null = null;
-  for (let index = 0; index < segment.length; index += 1) {
-    const character = segment.charAt(index);
-    if (quote !== null) {
-      if (character === quote) quote = null;
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (
-      character === '>' &&
-      segment.charAt(index - 1) !== '>' &&
-      segment.charAt(index + 1) !== '>'
-    ) {
-      const rest = segment.slice(index + 1).replace(/^\|/, '');
-      const target = tokenize(rest)[0] ?? '';
-      if (target === '' || target.startsWith('&')) continue;
-      if (NULL_SINKS.test(target)) continue;
-      return target;
-    }
-  }
-  return null;
 }
 
 function gitCommand(argv: string[]): { index: number; subcommand: string } | null {
@@ -493,14 +739,9 @@ function collectSegmentHits(segment: string, depth: number): DangerHit[] {
     }
   }
 
-  if (executable === 'truncate') {
-    const zeroSize =
-      argv.includes('-s0') ||
-      argv.some(
-        (argument, index) =>
-          (argument === '-s' || argument === '--size') && argv[index + 1] === '0',
-      );
-    if (zeroSize) hits.push({ reason: 'overwrite', target: argv.at(-1) ?? 'a file' });
+  if (executable === 'truncate' && truncatesToNothing(argv)) {
+    const target = argv.at(-1) ?? 'a file';
+    if (!isScratchTarget(target)) hits.push({ reason: 'empty', target });
   }
 
   if (executable === 'dd') {
@@ -553,8 +794,21 @@ function collectSegmentHits(segment: string, depth: number): DangerHit[] {
     }
   }
 
-  const redirection = redirectionTarget(cleaned);
-  if (redirection !== null) hits.push({ reason: 'overwrite', target: redirection });
+  // Sending output to a file is a write like any other. It is a loss only
+  // when the command writes nothing: `: > f`, `> f`, `cat /dev/null > f`.
+  const scan = scanCommand(cleaned);
+  const words = stripWrapper(tokenize(scan.stripped));
+  const writesNothing =
+    words.length === 0 ||
+    (words.length === 1 && (words[0] === ':' || words[0] === 'true')) ||
+    (words.length === 2 && words[0] === 'cat' && words[1] === '/dev/null');
+  if (writesNothing) {
+    for (const redirect of scan.redirects) {
+      if (!redirect.append && !isScratchTarget(redirect.target)) {
+        hits.push({ reason: 'empty', target: redirect.target });
+      }
+    }
+  }
 
   const git = gitCommand(argv);
   if (git !== null) {
@@ -629,12 +883,38 @@ function collectSegmentHits(segment: string, depth: number): DangerHit[] {
   return hits;
 }
 
+/**
+ * `sort f > f`, `sed … f > f`, `cat f | … > f`: the shell empties f before
+ * anything in the pipeline reads it, so what was in it is lost.
+ */
+function selfOverwriteHits(command: string): DangerHit[] {
+  const hits: DangerHit[] = [];
+  for (const pipeline of splitPipelines(command)) {
+    const stages = splitSegments(stripComment(pipeline)).map((stage) => scanCommand(stage));
+    const reads = new Set<string>();
+    for (const stage of stages) {
+      stage.inputs.forEach((input) => reads.add(input));
+      const words = stripWrapper(tokenize(stage.stripped));
+      // echo and printf write their words; they read no file.
+      if (['echo', 'printf', 'tee'].includes(executableName(words[0] ?? ''))) continue;
+      words.slice(1).filter((word) => !word.startsWith('-')).forEach((word) => reads.add(word));
+    }
+    for (const stage of stages) {
+      for (const redirect of stage.redirects) {
+        if (!redirect.append && reads.has(redirect.target)) hits.push({ reason: 'empty-read', target: redirect.target });
+      }
+    }
+  }
+  return hits;
+}
+
 function collectHits(command: string, depth: number): DangerHit[] {
   const { command: withoutBodies, bodies } = stripHeredocs(command);
   const hits: DangerHit[] = [];
   for (const segment of splitSegments(withoutBodies)) {
     hits.push(...collectSegmentHits(segment, depth));
   }
+  hits.push(...selfOverwriteHits(withoutBodies));
   // A heredoc fed to a shell is executed; fed to anything else it is data.
   const firstWord = executableName(tokenize(splitSegments(withoutBodies)[0] ?? '')[0] ?? '');
   if (bodies.length > 0 && ['sh', 'bash', 'zsh', 'dash', 'ksh'].includes(firstWord)) {

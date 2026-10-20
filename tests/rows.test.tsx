@@ -103,7 +103,7 @@ describe('failures and destructive steps are never softened', () => {
       ['git reset --hard HEAD~2', '⚠ Throwing away the last 2 saved checkpoints and any unsaved edits'],
       ['chmod -R 777 public/', "⚠ Changing who can open or change 'public/' and everything inside it"],
       ['psql -c "DROP TABLE users"', '⚠ Permanently erasing stored data (table users)'],
-      ['echo hi > notes.txt', "⚠ Writing over 'notes.txt'; anything already in it is lost"],
+      [': > notes.txt', "⚠ Emptying 'notes.txt'"],
     ]
     for (const surface of SURFACES) {
       for (const [command, expected] of cases) {
@@ -304,7 +304,10 @@ describe('the rows around each call', () => {
         component: 'ToolResult',
         props: { tool_use_id: 'toolu_r', tool: 'Bash', output: { stdout: 'ok', stderr: '', interrupted: false }, isErrored: false },
       })
-      expect(await ui.drawn()).toEqual({ type: 'Box' })
+      // Claude Code 2.1.304's kit adds where a tree came from (`part`); what matters is an empty box.
+      const drawn = (await ui.drawn()) as { type: string; children?: unknown[] }
+      expect(drawn.type).toBe('Box')
+      expect(drawn.children ?? []).toHaveLength(0)
       await ui.unmount()
     }
   })
@@ -393,6 +396,58 @@ describe('0.2.2: more of Claude Code in plain words', () => {
     const calls = [row('Bash', bash('ls -la')), row('Bash', bash('git status')), row('Bash', bash('wc -l README.md'))]
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
     expect((await ui.find({ type: 'Text' }))?.text).toBe('→ Looking around the project (3 commands)')
+  })
+
+  test('a group that wrote files never says it only looked around', async ($, on) => {
+    engineRows(on)
+    const written = [row('Bash', bash("cat > a.md <<'EOF'\nhi\nEOF")), row('Bash', bash("cat > README.md <<'EOF'\n# v2\nEOF"))]
+    const mixed = [row('Bash', bash('ls -la')), row('Bash', bash("cat > a.md <<'EOF'\nhi\nEOF"))]
+    for (const [calls, expected] of [
+      [written, '✎ Writing files (2 file writes)'],
+      [mixed, '✎ Looking around and writing files (1 command, 1 file write)'],
+    ] as const) {
+      const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls: [...calls], isActive: false, isExpanded: false } })
+      expect((await ui.find({ type: 'Text' }))?.text).toBe(expected)
+      await ui.unmount()
+    }
+  })
+})
+
+describe('0.2.3: shell writes read like the Write tool', () => {
+  test('a heredoc that writes a file and a test run saved to a log read calmly', async ($, on) => {
+    engineRows(on)
+    const cases: Array<[string, string, string]> = [
+      ["cat > notes.md <<'EOF'\nhello\nEOF", 'Create the notes file', '✎ Writing a file (notes.md)'],
+      ['npm test > test.log 2>&1', 'Run tests and save output', '→ Checking everything still works… (output saved to test.log)'],
+      ['echo $RESULT > $OUT', 'Save the result', '✎ Writing a file'],
+    ]
+    for (const surface of SURFACES) {
+      for (const [command, description, expected] of cases) {
+        const props = row('Bash', bash(command, { description }), { output: { stdout: '', stderr: '', interrupted: false } })
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props })
+        const line = await ui.find({ type: 'Text' })
+        expect(line?.text).toBe(expected)
+        expect((line?.props as { color?: string } | undefined)?.color).not.toBe('warning')
+        await ui.unmount()
+      }
+    }
+  })
+
+  test('emptying a file and sorting a file into itself keep their warning', async ($, on) => {
+    engineRows(on)
+    const cases: Array<[string, string]> = [
+      [': > notes.txt', "⚠ Emptying 'notes.txt'"],
+      ['sort list.txt > list.txt', "⚠ Emptying 'list.txt' before it is read, so what was in it is lost"],
+    ]
+    for (const surface of SURFACES) {
+      for (const [command, expected] of cases) {
+        const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: row('Bash', bash(command)) })
+        const line = await ui.find({ type: 'Text' })
+        expect(line?.text).toBe(expected)
+        expect(line?.props).toMatchObject({ color: 'warning', bold: true })
+        await ui.unmount()
+      }
+    }
   })
 })
 

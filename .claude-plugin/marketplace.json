@@ -8,7 +8,7 @@
     {
       "name": "codevibez",
       "source": "./",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "description": "Shows what your coding agent does in plain English, in place of Claude Code's raw tool rows."
     }
   ]

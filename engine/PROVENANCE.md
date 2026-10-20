@@ -33,5 +33,12 @@ Changes made while vendoring:
   absolute paths, `git -C`, shell keywords and heredoc bodies), and the danger
   analysis now sees through `timeout` and `nohup`. Their tests are in
   `tests/rules-0.2.2.test.ts`.
+- 0.2.3 made a `>` redirect a write, not a danger: shell writes read like the
+  Write tool's rows, and output sent to a file is a short fact on its step.
+  The danger analysis keeps ⚠ only where a command guarantees a loss
+  (emptying a named file, `dd of=`, and writing over a file the same pipeline
+  reads), and `2>&1` and `&>` no longer split a step in two. Redirections are
+  read from the raw text, so a quoted `">"`, `(( a > b ))` and `[[ a > b ]]`
+  are not taken for one. Their tests are in `tests/shell-writes-0.2.3.test.ts`.
 
 Everything else is as it was at `93d2176`.

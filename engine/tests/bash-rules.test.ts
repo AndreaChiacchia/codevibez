@@ -275,9 +275,9 @@ describe('danger narration', () => {
     }
   });
 
-  it('warns on truncation, dd output, and plus force refspecs', () => {
+  it('warns on emptying a file, truncation, dd output, and plus force refspecs', () => {
     for (const command of [
-      'echo x > important-file',
+      ': > important-file',
       'truncate -s 0 important-file',
       'dd if=/tmp/input of=/dev/disk4',
       'git push origin +main',

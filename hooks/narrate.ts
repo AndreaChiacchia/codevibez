@@ -493,13 +493,16 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
   let files = 0;
   let searches = 0;
   let commands = 0;
+  let writes = 0;
   let pages = 0;
   let todos = 0;
   let other = 0;
-  for (const { call } of described) {
+  for (const { call, narration } of described) {
     if (call.tool === 'Read') files += 1;
     else if (TODO_TOOLS.has(call.tool)) todos += 1;
     else if (SEARCH_TOOLS.has(call.tool)) searches += 1;
+    // Claude Code folds `cat > f <<EOF` in with reads; it still writes a file.
+    else if (call.tool === 'Bash' && narration?.action.glyph === '✎') writes += 1;
     else if (call.tool === 'Bash') commands += 1;
     else if (call.tool === 'WebFetch') pages += 1;
     else other += 1;
@@ -508,6 +511,7 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
     files > 0 ? `${counted(files, 'file')} read` : '',
     searches > 0 ? counted(searches, 'search', 'searches') : '',
     commands > 0 ? counted(commands, 'command') : '',
+    writes > 0 ? counted(writes, 'file write') : '',
     pages > 0 ? `${counted(pages, 'web page')} read` : '',
     todos > 0 ? counted(todos, 'to-do update') : '',
     other > 0 ? counted(other, 'other step') : '',
@@ -515,12 +519,16 @@ export function describeGroup(calls: readonly GroupCall[]): Narration[] | null {
   const stem =
     todos === described.length
       ? 'Updating its to-do list'
-      : commands === described.length
-        ? 'Looking around the project'
-        : 'Getting familiar with your code';
+      : writes === described.length
+        ? 'Writing files'
+        : writes > 0
+          ? 'Looking around and writing files'
+          : commands === described.length
+            ? 'Looking around the project'
+            : 'Getting familiar with your code';
 
   const lines: Narration[] = [
-    { action: sentence('→', `${stem} (${parts.join(', ')})`, 'read') },
+    { action: writes > 0 ? sentence('✎', `${stem} (${parts.join(', ')})`, 'info') : sentence('→', `${stem} (${parts.join(', ')})`, 'read') },
   ];
 
   // Anything that is not routine is never folded into the count line.
