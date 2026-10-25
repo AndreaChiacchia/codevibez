@@ -1,6 +1,6 @@
 # codevibez
 
-![version](https://img.shields.io/badge/version-0.2.3-blue)
+![version](https://img.shields.io/badge/version-0.3.0-blue)
 
 > [!NOTE]
 > This is AndreaChiacchia's fork of [leonhong18/codevibez](https://github.com/leonhong18/codevibez). It adds three
