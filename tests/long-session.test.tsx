@@ -5,6 +5,8 @@ import type { On } from 'claude-code'
 
 import type { Chapter } from '../types'
 
+import { STILL } from './fixtures.tsx'
+
 // A long session through every hook, so story writes, the chapter cap and the
 // time per step stay bounded. The kit stops a test at 20 seconds; 0.2.1 took
 // longer than that for these sessions.
@@ -53,7 +55,7 @@ async function turn($: Engine, id: string, steps: number, failEvery: number): Pr
 }
 
 for (const paneOpen of [false, true]) {
-  test(`1,200 steps over 60 turns, story pane ${paneOpen ? 'open' : 'closed'}`, async ($, on) => {
+  test(`1,200 steps over 60 turns, story pane ${paneOpen ? 'open' : 'closed'}`, STILL, async ($, on) => {
     const writes = engine(on)
     if (paneOpen) await $.command.run({ command: 'codevibez', args: 'story' } as never)
     const started = Date.now()
@@ -73,7 +75,7 @@ for (const paneOpen of [false, true]) {
     }
   })
 
-  test(`one turn of 2,000 steps, half failing, story pane ${paneOpen ? 'open' : 'closed'}`, async ($, on) => {
+  test(`one turn of 2,000 steps, half failing, story pane ${paneOpen ? 'open' : 'closed'}`, STILL, async ($, on) => {
     const writes = engine(on)
     if (paneOpen) await $.command.run({ command: 'codevibez', args: 'story' } as never)
     const started = Date.now()

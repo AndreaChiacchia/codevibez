@@ -11,11 +11,12 @@ import {
   failedCommand,
   failedTests,
   row,
+  STILL,
 } from './fixtures.tsx'
 
 describe('English in place of each tool row', () => {
   for (const tool of COVERED) {
-    test(`${tool.name} draws plain English on terminal and desktop`, async ($, on) => {
+    test(`${tool.name} draws plain English on terminal and desktop`, STILL, async ($, on) => {
       engineRows(on)
       for (const surface of SURFACES) {
         const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: tool.props() })
@@ -27,7 +28,7 @@ describe('English in place of each tool row', () => {
     })
   }
 
-  test('a running call reads as still going, then settles', async ($, on) => {
+  test('a running call reads as still going, then settles', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const props = row('Bash', bash('npm install express'), { isRunning: true })
@@ -44,7 +45,7 @@ describe('English in place of each tool row', () => {
 })
 
 describe('failures and destructive steps are never softened', () => {
-  test('a failed test run shows the exact counts, in the error color', async ($, on) => {
+  test('a failed test run shows the exact counts, in the error color', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: failedTests() })
@@ -55,7 +56,7 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
-  test('a failed command keeps its exit code', async ($, on) => {
+  test('a failed command keeps its exit code', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: failedCommand() })
@@ -66,7 +67,7 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
-  test('the exit code is kept however Claude Code words the error', async ($, on) => {
+  test('the exit code is kept however Claude Code words the error', STILL, async ($, on) => {
     engineRows(on)
     const outputs = [
       'Error: Exit code 1\nls: /no-such-folder-here: No such file or directory',
@@ -85,7 +86,7 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
-  test('a deletion names its target in full, in the warning color', async ($, on) => {
+  test('a deletion names its target in full, in the warning color', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: deletion() })
@@ -96,7 +97,7 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
-  test('force pushes, hard resets, permission changes and dropped data are flagged', async ($, on) => {
+  test('force pushes, hard resets, permission changes and dropped data are flagged', STILL, async ($, on) => {
     engineRows(on)
     const cases: Array<[string, string]> = [
       ['git push --force origin main', '⚠ Replacing the shared online copy of this work; older versions there are lost'],
@@ -114,7 +115,7 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
-  test('a step you said no to says so', async ($, on) => {
+  test('a step you said no to says so', STILL, async ($, on) => {
     engineRows(on)
     const props = row('Edit', { file_path: '/repo/a.ts', old_string: 'a', new_string: 'b' }, {
       isErrored: true,
@@ -127,7 +128,7 @@ describe('failures and destructive steps are never softened', () => {
     }
   })
 
-  test('an interrupted step says it stopped', async ($, on) => {
+  test('an interrupted step says it stopped', STILL, async ($, on) => {
     engineRows(on)
     const props = row('Bash', bash('npm run build'), { isInterrupted: true, isErrored: true, output: 'Interrupted' })
     for (const surface of SURFACES) {
@@ -139,7 +140,7 @@ describe('failures and destructive steps are never softened', () => {
 })
 
 describe('0.2.1: no raw row first, and no bare catch-all', () => {
-  test('a row drawn first with an empty input is English once the input arrives', async ($, on) => {
+  test('a row drawn first with an empty input is English once the input arrives', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const streaming = row('Bash', {}, { isRunning: false })
@@ -152,7 +153,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
     }
   })
 
-  test("an unknown routine command shows the step's own description", async ($, on) => {
+  test("an unknown routine command shows the step's own description", STILL, async ($, on) => {
     engineRows(on)
     const props = row('Bash', bash('qq-tool --serve', { description: 'Start the app services' }), {
       output: { stdout: '', stderr: '', interrupted: false },
@@ -164,7 +165,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
     }
   })
 
-  test('a long or secret-bearing description is cut to 80 characters and scrubbed', async ($, on) => {
+  test('a long or secret-bearing description is cut to 80 characters and scrubbed', STILL, async ($, on) => {
     engineRows(on)
     const long = `Run the importer with token=sk-ant-api03-abcdefghijklmnop ${'and then keep going '.repeat(6)}`
     const props = row('Bash', bash('qq-tool import', { description: long }))
@@ -178,7 +179,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
     }
   })
 
-  test('a destructive command with a soothing description keeps its warning', async ($, on) => {
+  test('a destructive command with a soothing description keeps its warning', STILL, async ($, on) => {
     engineRows(on)
     const props = row('Bash', bash('rm -rf build', { description: 'Tidy up a little' }), {
       output: { stdout: '', stderr: '', interrupted: false },
@@ -192,7 +193,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
     }
   })
 
-  test('a failed, stopped or refused unknown command keeps the rule-based lines', async ($, on) => {
+  test('a failed, stopped or refused unknown command keeps the rule-based lines', STILL, async ($, on) => {
     engineRows(on)
     const refusal = "The user doesn't want to proceed with this tool use. The tool use was rejected."
     const cases = [
@@ -212,7 +213,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
     }
   })
 
-  test('a call with no description falls back to the old catch-all', async ($, on) => {
+  test('a call with no description falls back to the old catch-all', STILL, async ($, on) => {
     engineRows(on)
     const props = row('Bash', { command: 'my-tool --flag' }, { output: { stdout: '', stderr: '', interrupted: false } })
     for (const surface of SURFACES) {
@@ -224,7 +225,7 @@ describe('0.2.1: no raw row first, and no bare catch-all', () => {
 })
 
 describe('found in the end-to-end test', () => {
-  test("a test run with Node's or Python's built-in runner keeps exact counts", async ($, on) => {
+  test("a test run with Node's or Python's built-in runner keeps exact counts", STILL, async ($, on) => {
     engineRows(on)
     const nodeFailed = row('Bash', bash('node --test'), {
       isErrored: true,
@@ -250,7 +251,7 @@ describe('found in the end-to-end test', () => {
     }
   })
 
-  test('a chain is named by the step it is for, not the filler before it', async ($, on) => {
+  test('a chain is named by the step it is for, not the filler before it', STILL, async ($, on) => {
     engineRows(on)
     const commit = row('Bash', bash("git add math.js && git commit -m 'First version'"), { output: { stdout: '', stderr: '', interrupted: false } })
     for (const surface of SURFACES) {
@@ -260,7 +261,7 @@ describe('found in the end-to-end test', () => {
     }
   })
 
-  test('a step refused at the permission prompt says it did not run', async ($, on) => {
+  test('a step refused at the permission prompt says it did not run', STILL, async ($, on) => {
     engineRows(on)
     const refusal =
       "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file)."
@@ -279,7 +280,7 @@ describe('found in the end-to-end test', () => {
     }
   })
 
-  test('a group of one call is that call\'s own line; a group of to-dos says so', async ($, on) => {
+  test('a group of one call is that call\'s own line; a group of to-dos says so', STILL, async ($, on) => {
     engineRows(on)
     const one = [row('TaskCreate', { subject: 'Fix multiply', description: 'x' })]
     const todos = [row('TaskCreate', { subject: 'Fix multiply', description: 'x' }), row('TaskUpdate', { taskId: '1', status: 'completed' })]
@@ -295,7 +296,7 @@ describe('found in the end-to-end test', () => {
 })
 
 describe('the rows around each call', () => {
-  test('the raw result block under a known call is left out', async ($, on) => {
+  test('the raw result block under a known call is left out', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({
@@ -312,7 +313,7 @@ describe('the rows around each call', () => {
     }
   })
 
-  test('a collapsed group gets one count line with exact numbers', async ($, on) => {
+  test('a collapsed group gets one count line with exact numbers', STILL, async ($, on) => {
     engineRows(on)
     const calls = [
       row('Read', { file_path: '/repo/a.ts' }),
@@ -327,7 +328,7 @@ describe('the rows around each call', () => {
     }
   })
 
-  test('a failure inside a group is spelled out, not folded away', async ($, on) => {
+  test('a failure inside a group is spelled out, not folded away', STILL, async ($, on) => {
     engineRows(on)
     const calls = [
       row('Read', { file_path: '/repo/a.ts' }),
@@ -342,7 +343,7 @@ describe('the rows around each call', () => {
     }
   })
 
-  test('an expanded group is left to Claude Code, which unfolds it into rows', async ($, on) => {
+  test('an expanded group is left to Claude Code, which unfolds it into rows', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({
@@ -358,7 +359,7 @@ describe('the rows around each call', () => {
 })
 
 describe('0.2.2: more of Claude Code in plain words', () => {
-  test("Claude Code's own tools get plain lines on terminal and desktop", async ($, on) => {
+  test("Claude Code's own tools get plain lines on terminal and desktop", STILL, async ($, on) => {
     engineRows(on)
     const cases: Array<[string, unknown, string]> = [
       ['SendMessage', { to: 'helper', message: 'hi' }, '→ Sending a message to a helper'],
@@ -379,7 +380,7 @@ describe('0.2.2: more of Claude Code in plain words', () => {
     }
   })
 
-  test('removing a separate copy of the project is a warning', async ($, on) => {
+  test('removing a separate copy of the project is a warning', STILL, async ($, on) => {
     engineRows(on)
     const props = row('ExitWorktree', { action: 'remove', discard_changes: true })
     for (const surface of SURFACES) {
@@ -391,14 +392,14 @@ describe('0.2.2: more of Claude Code in plain words', () => {
     }
   })
 
-  test('a group made only of commands says it is looking around', async ($, on) => {
+  test('a group made only of commands says it is looking around', STILL, async ($, on) => {
     engineRows(on)
     const calls = [row('Bash', bash('ls -la')), row('Bash', bash('git status')), row('Bash', bash('wc -l README.md'))]
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
     expect((await ui.find({ type: 'Text' }))?.text).toBe('→ Looking around the project (3 commands)')
   })
 
-  test('a group that wrote files never says it only looked around', async ($, on) => {
+  test('a group that wrote files never says it only looked around', STILL, async ($, on) => {
     engineRows(on)
     const written = [row('Bash', bash("cat > a.md <<'EOF'\nhi\nEOF")), row('Bash', bash("cat > README.md <<'EOF'\n# v2\nEOF"))]
     const mixed = [row('Bash', bash('ls -la')), row('Bash', bash("cat > a.md <<'EOF'\nhi\nEOF"))]
@@ -414,7 +415,7 @@ describe('0.2.2: more of Claude Code in plain words', () => {
 })
 
 describe('0.2.3: shell writes read like the Write tool', () => {
-  test('a heredoc that writes a file and a test run saved to a log read calmly', async ($, on) => {
+  test('a heredoc that writes a file and a test run saved to a log read calmly', STILL, async ($, on) => {
     engineRows(on)
     const cases: Array<[string, string, string]> = [
       ["cat > notes.md <<'EOF'\nhello\nEOF", 'Create the notes file', '✎ Writing a file (notes.md)'],
@@ -433,7 +434,7 @@ describe('0.2.3: shell writes read like the Write tool', () => {
     }
   })
 
-  test('emptying a file and sorting a file into itself keep their warning', async ($, on) => {
+  test('emptying a file and sorting a file into itself keep their warning', STILL, async ($, on) => {
     engineRows(on)
     const cases: Array<[string, string]> = [
       [': > notes.txt', "⚠ Emptying 'notes.txt'"],
@@ -456,7 +457,7 @@ describe('0.2.3: a call a hook stopped reads as not run', () => {
   const EXIT_2 = 'Error: PreToolUse:Bash hook error: [/scratch/block.sh]: Blocked by the test hook (exit 2)\n'
   const JSON_DENY = 'Error: PreToolUse:Bash hook error: Blocked by the test hook (JSON deny)'
 
-  test('both hook-block forms say the step did not run, never that it failed', async ($, on) => {
+  test('both hook-block forms say the step did not run, never that it failed', STILL, async ($, on) => {
     engineRows(on)
     const cases = [
       row('Bash', bash('echo marker'), { isErrored: true, output: EXIT_2 }),
@@ -475,7 +476,7 @@ describe('0.2.3: a call a hook stopped reads as not run', () => {
     }
   })
 
-  test('a collapsed group counts a hook-blocked step as not run', async ($, on) => {
+  test('a collapsed group counts a hook-blocked step as not run', STILL, async ($, on) => {
     engineRows(on)
     const calls = [row('Read', { file_path: '/repo/a.ts' }), row('Bash', bash('ls -la'), { isErrored: true, output: JSON_DENY })]
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
@@ -484,7 +485,7 @@ describe('0.2.3: a call a hook stopped reads as not run', () => {
     expect(shown.join('\n').includes('failed')).toBe(false)
   })
 
-  test('a step that ran and failed stays a failure, whatever its output mentions', async ($, on) => {
+  test('a step that ran and failed stays a failure, whatever its output mentions', STILL, async ($, on) => {
     engineRows(on)
     const cases = [
       row('Bash', bash('npm test'), {
@@ -504,7 +505,7 @@ describe('0.2.3: a call a hook stopped reads as not run', () => {
 })
 
 describe('leaves what it cannot read to Claude Code', () => {
-  test('any other tool gets a plain line that keeps its name', async ($, on) => {
+  test('any other tool gets a plain line that keeps its name', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: row('BrandNewTool', { anything: 1 }) })
@@ -513,7 +514,7 @@ describe('leaves what it cannot read to Claude Code', () => {
     }
   })
 
-  test('a tool whose input is not an object keeps Claude Code\'s own row', async ($, on) => {
+  test('a tool whose input is not an object keeps Claude Code\'s own row', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: row('BrandNewTool', 'raw text') })
@@ -522,7 +523,7 @@ describe('leaves what it cannot read to Claude Code', () => {
     }
   })
 
-  test('an unexpected input shape keeps Claude Code\'s own row', async ($, on) => {
+  test('an unexpected input shape keeps Claude Code\'s own row', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       for (const props of [row('Bash', { cmd: 'ls' }), row('Read', 'not an object'), row('Edit', null)]) {
@@ -533,7 +534,7 @@ describe('leaves what it cannot read to Claude Code', () => {
     }
   })
 
-  test('a group holding a call it cannot read keeps Claude Code\'s own line', async ($, on) => {
+  test('a group holding a call it cannot read keeps Claude Code\'s own line', STILL, async ($, on) => {
     engineRows(on)
     const calls = [row('Read', { file_path: '/repo/a.ts' }), row('Bash', { cmd: 'ls' })]
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'ToolGroup', props: { calls, isActive: false, isExpanded: false } })
@@ -542,7 +543,7 @@ describe('leaves what it cannot read to Claude Code', () => {
 })
 
 describe('privacy', () => {
-  test('secret-looking values never reach an English line', async ($, on) => {
+  test('secret-looking values never reach an English line', STILL, async ($, on) => {
     engineRows(on)
     const secret = 'sk-ant-api03-abcdefghijklmnop'
     const props = [

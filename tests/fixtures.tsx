@@ -4,7 +4,7 @@ import type {
   On,
   RenderPropsOf,
 } from 'claude-code'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, TestOptions } from 'claude-code/testing'
 
 /**
  * Tool rows shaped like this build's generated types: each input is typed by
@@ -15,6 +15,15 @@ import type { Engine } from 'claude-code/testing'
 export const PLUGIN = 'codevibez'
 export const SURFACES = ['terminal', 'desktop'] as const
 export const ENGINE_ROW = 'CLAUDE CODE OWN ROW'
+
+/**
+ * Every motion effect off: the tests that check what a row says run with these
+ * settings, so they see the still rows and never read a clock. The effects have
+ * their own tests (effects.test.tsx).
+ */
+export const STILL: TestOptions = {
+  options: { shimmer: 'off', settle: 'off', storyRoll: 'off' },
+}
 
 type ToolUseProps = RenderPropsOf['ToolUse']
 

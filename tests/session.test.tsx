@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { ENGINE_ROW, PLUGIN, SURFACES, deletion, engineRows, failedTests, row } from './fixtures.tsx'
+import { ENGINE_ROW, PLUGIN, STILL, SURFACES, deletion, engineRows, failedTests, row } from './fixtures.tsx'
 
 const ok = (stdout: string): BuiltinToolResults['Bash'] => ({ stdout, stderr: '', interrupted: false })
 
@@ -34,7 +34,7 @@ async function endTurn($: Engine, agentId?: string): Promise<void> {
 }
 
 describe('/codevibez switches the view and says which is on', () => {
-  test('toggles to the raw rows and back, on every surface', async ($, on) => {
+  test('toggles to the raw rows and back, on every surface', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'ToolUse', props: deletion() })
@@ -52,14 +52,14 @@ describe('/codevibez switches the view and says which is on', () => {
     }
   })
 
-  test('takes english and raw by name, and explains anything else', async $ => {
+  test('takes english and raw by name, and explains anything else', STILL, async $ => {
     expect((await $.command.run({ command: 'codevibez', args: 'raw' } as never)).text).toContain('Raw view is on')
     expect((await $.command.run({ command: 'codevibez', args: 'raw' } as never)).text).toContain('Raw view is on')
     expect((await $.command.run({ command: 'codevibez', args: 'english' } as never)).text).toContain('English view is on')
     expect((await $.command.run({ command: 'codevibez', args: 'loud' } as never)).text).toContain('/codevibez english')
   })
 
-  test('raw view leaves the result block and the group line to Claude Code', async ($, on) => {
+  test('raw view leaves the result block and the group line to Claude Code', STILL, async ($, on) => {
     engineRows(on)
     await $.command.run({ command: 'codevibez', args: 'raw' } as never)
     const result = await $.ui.mount({
@@ -78,7 +78,7 @@ describe('/codevibez switches the view and says which is on', () => {
     expect((await group.find({ type: 'Text' }))?.text).toBe(ENGINE_ROW)
   })
 
-  test('registers the command when the session starts', async ($, on) => {
+  test('registers the command when the session starts', STILL, async ($, on) => {
     const registered: string[] = []
     on('session.start', (_$, e) => ({ cwd: e.cwd }))
     on('command.register', (_$, e) => {
@@ -91,7 +91,7 @@ describe('/codevibez switches the view and says which is on', () => {
 })
 
 describe('turn summary', () => {
-  test('one line under the answer, with exact counts and the failure first-class', async ($, on) => {
+  test('one line under the answer, with exact counts and the failure first-class', STILL, async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', (_$, e) => {
       if (e.tool === 'Write') {
@@ -122,7 +122,7 @@ describe('turn summary', () => {
     ])
   })
 
-  test('a step you said no to is counted as that, not as a failure or a destructive step', async ($, on) => {
+  test('a step you said no to is counted as that, not as a failure or a destructive step', STILL, async ($, on) => {
     const logs = engineTurns(on)
     const refusal = "The user doesn't want to proceed with this tool use. The tool use was rejected."
     on('tool.call', (_$, e) => {
@@ -136,7 +136,7 @@ describe('turn summary', () => {
     expect(logs).toEqual(['⚠ This turn: ran 1 command, 1 destructive step, you said no to 1 step.'])
   })
 
-  test('shell writes are not counted as destructive steps; emptying a file is', async ($, on) => {
+  test('shell writes are not counted as destructive steps; emptying a file is', STILL, async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: ok('') }))
     await startTurn($, 'write some files')
@@ -147,7 +147,7 @@ describe('turn summary', () => {
     expect(logs).toEqual(['⚠ This turn: ran 3 commands, the checks passed, 1 destructive step.'])
   })
 
-  test('steps a hook stopped are counted as not run, never as failures', async ($, on) => {
+  test('steps a hook stopped are counted as not run, never as failures', STILL, async ($, on) => {
     const logs = engineTurns(on)
     const exit2 = 'PreToolUse:Bash hook error: [/scratch/block.sh]: Blocked by the test hook (exit 2)\n'
     const deny = 'PreToolUse:Bash hook error: Blocked by the test hook (JSON deny)'
@@ -164,7 +164,7 @@ describe('turn summary', () => {
     expect(logs).toEqual(['● This turn: ran 1 command, a hook blocked 2 steps.'])
   })
 
-  test('says nothing when nothing changed and nothing ran', async ($, on) => {
+  test('says nothing when nothing changed and nothing ran', STILL, async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: {} }))
     await startTurn($, 'what does this project do?')
@@ -173,7 +173,7 @@ describe('turn summary', () => {
     expect(logs).toEqual([])
   })
 
-  test('a subagent finishing is not the end of the turn', async ($, on) => {
+  test('a subagent finishing is not the end of the turn', STILL, async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: ok('') }))
     await startTurn($, 'build it')
@@ -184,7 +184,7 @@ describe('turn summary', () => {
     expect(logs).toEqual(['● This turn: ran 1 command.'])
   })
 
-  test('shows nothing in the raw view', async ($, on) => {
+  test('shows nothing in the raw view', STILL, async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: ok('') }))
     await $.command.run({ command: 'codevibez', args: 'raw' } as never)
@@ -196,7 +196,7 @@ describe('turn summary', () => {
 })
 
 describe('observe only', () => {
-  test('every tool call reaches Claude Code unchanged and its result comes back unchanged', async ($, on) => {
+  test('every tool call reaches Claude Code unchanged and its result comes back unchanged', STILL, async ($, on) => {
     const seen: unknown[] = []
     const answers: ToolCallResult[] = [
       { result: ok('fine') },
@@ -222,7 +222,7 @@ describe('observe only', () => {
     }
   })
 
-  test('a failed Bash call reaches the English line and the summary', async ($, on) => {
+  test('a failed Bash call reaches the English line and the summary', STILL, async ($, on) => {
     engineRows(on)
     const logs = engineTurns(on)
     on('tool.call', () => ({
@@ -243,7 +243,7 @@ describe('observe only', () => {
 })
 
 describe('fail-open', () => {
-  test('when translating a row throws, Claude Code draws its own row', async ($, on) => {
+  test('when translating a row throws, Claude Code draws its own row', STILL, async ($, on) => {
     engineRows(on)
     for (const surface of SURFACES) {
       // A group whose calls are not a list makes the translation itself throw.
@@ -258,7 +258,7 @@ describe('fail-open', () => {
     }
   })
 
-  test('the turn ends with its own answer, untouched', async ($, on) => {
+  test('the turn ends with its own answer, untouched', STILL, async ($, on) => {
     const logs = engineTurns(on)
     on('tool.call', () => ({ result: ok('') }))
     await startTurn($, 'build it')

@@ -2,8 +2,31 @@
   "name": "codevibez",
   "displayName": "codevibez",
   "version": "0.2.3",
-  "description": "Shows what your coding agent does in plain English, in place of Claude Code's raw tool rows.",
+  "description": "Shows what your coding agent does in plain English, in place of Claude Code's raw tool rows, with a light over the running step, a settle into color and a story pane that rolls new lines in",
   "author": { "name": "leonhong18", "url": "https://github.com/leonhong18" },
   "license": "MIT",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "shimmer": {
+      "type": "string",
+      "title": "Running step shimmer",
+      "description": "on: while a step runs, its sentence dims a little and a soft light sweeps across it, left to right, until the step finishes; a group of reads and searches gets it too while one of them runs. Destructive steps never shimmer. off: a running step's sentence is still, ending in ….",
+      "default": "on",
+      "options": ["on", "off"]
+    },
+    "settle": {
+      "type": "string",
+      "title": "Settle into color",
+      "description": "on: when a step finishes, its ✓, ✗ or ■ line fades from dim into its green, red or yellow in 0.3 s, once. Needs the fullscreen layout; on the main screen the line takes its color at once. off: the color shows at once.",
+      "default": "on",
+      "options": ["on", "off"]
+    },
+    "storyRoll": {
+      "type": "string",
+      "title": "Story roll-in",
+      "description": "on: in the /codevibez story pane, the lines added since it last drew type themselves in one after another (the newest 8, 0.2 s each); failures and destructive steps appear whole. off: new lines appear at once.",
+      "default": "on",
+      "options": ["on", "off"]
+    }
+  }
 }

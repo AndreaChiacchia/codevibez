@@ -1,7 +1,7 @@
 import type { BuiltinToolResults, RenderPropsOf } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
-import { PLUGIN, SURFACES } from './fixtures.tsx'
+import { PLUGIN, STILL, SURFACES } from './fixtures.tsx'
 
 const PANE: RenderPropsOf['Pane'] = {
   title: 'The story so far',
@@ -15,7 +15,7 @@ const PANE: RenderPropsOf['Pane'] = {
 const ok = (stdout: string): BuiltinToolResults['Bash'] => ({ stdout, stderr: '', interrupted: false })
 
 describe('/codevibez story', () => {
-  test('opens the story pane', async ($, on) => {
+  test('opens the story pane', STILL, async ($, on) => {
     const opened: string[] = []
     on('ui.open', (_$, e) => {
       opened.push(e.id)
@@ -26,7 +26,7 @@ describe('/codevibez story', () => {
     expect(answer.text).toContain('story of this session is open')
   })
 
-  test('tells each prompt verbatim as a chapter heading, then its steps in English', async ($, on) => {
+  test('tells each prompt verbatim as a chapter heading, then its steps in English', STILL, async ($, on) => {
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('turn.start', (_$, e) => ({ turnId: e.turnId }))
     on('turn.complete', (_$, e) => ({ text: e.answer }))
@@ -64,7 +64,7 @@ describe('/codevibez story', () => {
     }
   })
 
-  test('a short pane shows the newest steps and says how many earlier lines are hidden', async ($, on) => {
+  test('a short pane shows the newest steps and says how many earlier lines are hidden', STILL, async ($, on) => {
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('turn.start', (_$, e) => ({ turnId: e.turnId }))
     on('turn.complete', (_$, e) => ({ text: e.answer }))
@@ -90,7 +90,7 @@ describe('/codevibez story', () => {
     }
   })
 
-  test('says so when nothing has happened yet', async $ => {
+  test('says so when nothing has happened yet', STILL, async $ => {
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: PLUGIN, surface, component: 'Pane', requestId: 'codevibez-story', props: PANE })
       expect((await ui.find({ type: 'Text' }))?.text).toContain('Nothing has happened yet')

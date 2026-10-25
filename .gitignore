@@ -9,3 +9,6 @@ tsconfig.json
 # Local session settings and scratch space.
 .claude/
 .vendor-tmp/
+
+# Workflow planning notes.
+.iwo/
