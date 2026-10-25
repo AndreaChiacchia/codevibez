@@ -1,7 +1,7 @@
 {
   "name": "codevibez",
   "displayName": "codevibez",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Shows what your coding agent does in plain English, in place of Claude Code's raw tool rows, with a light over the running step, a settle into color and a story pane that rolls new lines in",
   "author": { "name": "leonhong18", "url": "https://github.com/leonhong18" },
   "license": "MIT",
